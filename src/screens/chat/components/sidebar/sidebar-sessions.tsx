@@ -7,6 +7,12 @@ import {
   CollapsibleTrigger,
   CollapsiblePanel,
 } from '@/components/ui/collapsible'
+import {
+  ScrollAreaRoot,
+  ScrollAreaViewport,
+  ScrollAreaScrollbar,
+  ScrollAreaThumb,
+} from '@/components/ui/scroll-area'
 import { SessionItem } from './session-item'
 import type { SessionMeta } from '../../types'
 import { memo } from 'react'
@@ -30,7 +36,7 @@ export const SidebarSessions = memo(function SidebarSessions({
 }: SidebarSessionsProps) {
   return (
     <Collapsible
-      className="flex flex-col flex-1 min-h-0 w-full px-2"
+      className="flex h-full flex-col flex-1 min-h-0 w-full"
       defaultOpen={defaultOpen}
     >
       <CollapsibleTrigger className="w-fit pl-1.5 shrink-0">
@@ -43,23 +49,28 @@ export const SidebarSessions = memo(function SidebarSessions({
         </span>
       </CollapsibleTrigger>
       <CollapsiblePanel
-        className="w-full flex-1 min-h-0 !h-full data-starting-style:!h-0 data-ending-style:!h-0"
-        contentClassName="flex-1 min-h-0"
+        className="w-full flex-1 min-h-0 h-auto data-starting-style:h-0 data-ending-style:h-0"
+        contentClassName="flex flex-1 min-h-0 flex-col overflow-y-auto"
       >
-        <div className="h-full w-full overflow-y-auto">
-          <div className="flex flex-col gap-px">
-            {sessions.map((session) => (
-              <SessionItem
-                key={session.key}
-                session={session}
-                active={session.friendlyId === activeFriendlyId}
-                onSelect={onSelect}
-                onRename={onRename}
-                onDelete={onDelete}
-              />
-            ))}
-          </div>
-        </div>
+        <ScrollAreaRoot className="flex-1 min-h-0">
+          <ScrollAreaViewport className="min-h-0">
+            <div className="flex flex-col gap-px pl-2 pr-2">
+              {sessions.map((session) => (
+                <SessionItem
+                  key={session.key}
+                  session={session}
+                  active={session.friendlyId === activeFriendlyId}
+                  onSelect={onSelect}
+                  onRename={onRename}
+                  onDelete={onDelete}
+                />
+              ))}
+            </div>
+          </ScrollAreaViewport>
+          <ScrollAreaScrollbar orientation="vertical">
+            <ScrollAreaThumb />
+          </ScrollAreaScrollbar>
+        </ScrollAreaRoot>
       </CollapsiblePanel>
     </Collapsible>
   )
