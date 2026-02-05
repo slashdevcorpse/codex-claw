@@ -13,6 +13,9 @@ type ChatMessageListProps = {
   messages: Array<GatewayMessage>
   loading: boolean
   empty: boolean
+  emptyState?: React.ReactNode
+  notice?: React.ReactNode
+  noticePosition?: 'start' | 'end'
   waitingForResponse: boolean
   sessionKey?: string
   pinToTop: boolean
@@ -25,6 +28,9 @@ function ChatMessageListComponent({
   messages,
   loading,
   empty,
+  emptyState,
+  notice,
+  noticePosition = 'start',
   waitingForResponse,
   sessionKey,
   pinToTop,
@@ -106,8 +112,9 @@ function ChatMessageListComponent({
     // mt-2 is to fix the prompt-input cut off
     <ChatContainerRoot className="flex-1 min-h-0 -mb-4">
       <ChatContainerContent className="pt-6" style={contentStyle}>
-        {empty ? (
-          <div aria-hidden></div>
+        {notice && noticePosition === 'start' ? notice : null}
+        {empty && !notice ? (
+          (emptyState ?? <div aria-hidden></div>)
         ) : hasGroup ? (
           <>
             {displayMessages
@@ -201,6 +208,7 @@ function ChatMessageListComponent({
             )
           })
         )}
+        {notice && noticePosition === 'end' ? notice : null}
         <ChatContainerScrollAnchor
           ref={anchorRef as React.RefObject<HTMLDivElement>}
         />
@@ -217,6 +225,9 @@ function areChatMessageListEqual(
     prev.messages === next.messages &&
     prev.loading === next.loading &&
     prev.empty === next.empty &&
+    prev.emptyState === next.emptyState &&
+    prev.notice === next.notice &&
+    prev.noticePosition === next.noticePosition &&
     prev.waitingForResponse === next.waitingForResponse &&
     prev.sessionKey === next.sessionKey &&
     prev.pinToTop === next.pinToTop &&

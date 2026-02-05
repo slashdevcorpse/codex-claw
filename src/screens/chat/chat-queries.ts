@@ -7,6 +7,11 @@ import type {
   SessionMeta,
 } from './types'
 
+type GatewayStatusResponse = {
+  ok: boolean
+  error?: string
+}
+
 export const chatQueryKeys = {
   sessions: ['chat', 'sessions'] as const,
   history: function history(friendlyId: string, sessionKey: string) {
@@ -31,6 +36,24 @@ export async function fetchHistory(payload: {
   const res = await fetch(`/api/history?${query.toString()}`)
   if (!res.ok) throw new Error(await readError(res))
   return (await res.json()) as HistoryResponse
+}
+
+export async function fetchGatewayStatus(): Promise<GatewayStatusResponse> {
+  const controller = new AbortController()
+  const timeout = window.setTimeout(() => controller.abort(), 2500)
+
+  try {
+    const res = await fetch('/api/ping', { signal: controller.signal })
+    if (!res.ok) throw new Error(await readError(res))
+    return (await res.json()) as GatewayStatusResponse
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new Error('Gateway check timed out')
+    }
+    throw err
+  } finally {
+    window.clearTimeout(timeout)
+  }
 }
 
 export function updateHistoryMessages(

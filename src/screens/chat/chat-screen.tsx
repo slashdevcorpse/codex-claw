@@ -20,6 +20,7 @@ import {
   chatQueryKeys,
   appendHistoryMessage,
   clearHistoryMessages,
+  fetchGatewayStatus,
   removeHistoryMessageByClientId,
   updateHistoryMessageByClientId,
   updateSessionLastMessage,
@@ -29,6 +30,7 @@ import { ChatSidebar } from './components/chat-sidebar'
 import { ChatHeader } from './components/chat-header'
 import { ChatMessageList } from './components/chat-message-list'
 import { ChatComposer } from './components/chat-composer'
+import { GatewayStatusMessage } from './components/gateway-status-message'
 import {
   consumePendingSend,
   hasPendingGeneration,
@@ -120,6 +122,25 @@ export function ChatScreen({
     },
     staleTime: Infinity,
   })
+  const gatewayStatusQuery = useQuery({
+    queryKey: ['gateway', 'status'],
+    queryFn: fetchGatewayStatus,
+    retry: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    refetchOnMount: 'always',
+  })
+  const gatewayStatusMountRef = useRef(Date.now())
+  const gatewayStatusError =
+    gatewayStatusQuery.error instanceof Error
+      ? gatewayStatusQuery.error.message
+      : gatewayStatusQuery.data && !gatewayStatusQuery.data.ok
+        ? gatewayStatusQuery.data.error || 'Gateway unavailable'
+        : null
+  const gatewayError = gatewayStatusError ?? sessionsError ?? historyError
+  const handleGatewayRefetch = useCallback(() => {
+    void gatewayStatusQuery.refetch()
+  }, [gatewayStatusQuery])
   const isSidebarCollapsed = uiQuery.data?.isSidebarCollapsed ?? false
   const handleActiveSessionDelete = useCallback(() => {
     setError(null)
@@ -166,7 +187,7 @@ export function ChatScreen({
       if (error) setError(null)
       return
     }
-    const messageText = sessionsError ?? historyError
+    const messageText = sessionsError ?? historyError ?? gatewayStatusError
     if (!messageText) {
       if (error?.startsWith('Failed to load')) {
         setError(null)
@@ -180,9 +201,18 @@ export function ChatScreen({
       ? `Failed to load sessions. ${sessionsError}`
       : historyError
         ? `Failed to load history. ${historyError}`
-        : null
+        : gatewayStatusError
+          ? `Gateway unavailable. ${gatewayStatusError}`
+          : null
     if (message) setError(message)
-  }, [error, historyError, isRedirecting, navigate, sessionsError])
+  }, [
+    error,
+    gatewayStatusError,
+    historyError,
+    isRedirecting,
+    navigate,
+    sessionsError,
+  ])
 
   const shouldRedirectToNew =
     !isNewChat &&
@@ -519,7 +549,22 @@ export function ChatScreen({
 
   const historyLoading =
     (historyQuery.isLoading && !historyQuery.data) || isRedirecting
+  const showGatewayDown = Boolean(gatewayStatusError)
+  const showGatewayNotice =
+    showGatewayDown &&
+    gatewayStatusQuery.errorUpdatedAt > gatewayStatusMountRef.current
   const historyEmpty = !historyLoading && displayMessages.length === 0
+  const gatewayNotice = useMemo(() => {
+    if (!showGatewayNotice) return null
+    if (!gatewayError) return null
+    return (
+      <GatewayStatusMessage
+        state="error"
+        error={gatewayError}
+        onRetry={handleGatewayRefetch}
+      />
+    )
+  }, [gatewayError, handleGatewayRefetch, showGatewayNotice])
 
   const sidebar = (
     <ChatSidebar
@@ -565,25 +610,14 @@ export function ChatScreen({
             onOpenSidebar={handleOpenSidebar}
           />
 
-          {error && !hideUi ? (
-            <div className="border-b border-primary-200 bg-primary-100 px-4 py-3 text-sm text-primary-800">
-              <div className="font-medium">{error}</div>
-              <div className="text-xs text-primary-700 mt-1">
-                Check that the dashboard server has access to the Clawdbot
-                Gateway and that{' '}
-                <code className="inline-code">CLAWDBOT_GATEWAY_TOKEN</code> (or{' '}
-                <code className="inline-code">CLAWDBOT_GATEWAY_PASSWORD</code>)
-                is set in your server environment.
-              </div>
-            </div>
-          ) : null}
-
           {hideUi ? null : (
             <>
               <ChatMessageList
                 messages={displayMessages}
                 loading={historyLoading}
                 empty={historyEmpty}
+                notice={gatewayNotice}
+                noticePosition="end"
                 waitingForResponse={waitingForResponse}
                 sessionKey={activeCanonicalKey}
                 pinToTop={pinToTop}

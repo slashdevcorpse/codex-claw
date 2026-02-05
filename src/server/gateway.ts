@@ -28,6 +28,11 @@ type ConnectParams = {
   scopes?: Array<string>
 }
 
+type GatewayWaiter = {
+  waitForRes: (id: string) => Promise<unknown>
+  handleMessage: (evt: MessageEvent) => void
+}
+
 function getGatewayConfig() {
   const url = process.env.CLAWDBOT_GATEWAY_URL?.trim() || 'ws://127.0.0.1:18789'
   const token = process.env.CLAWDBOT_GATEWAY_TOKEN?.trim() || ''
@@ -41,6 +46,60 @@ function getGatewayConfig() {
   }
 
   return { url, token, password }
+}
+
+function buildConnectParams(token: string, password: string): ConnectParams {
+  return {
+    minProtocol: 3,
+    maxProtocol: 3,
+    client: {
+      id: 'gateway-client',
+      displayName: 'webclaw',
+      version: 'dev',
+      platform: process.platform,
+      mode: 'ui',
+      instanceId: randomUUID(),
+    },
+    auth: {
+      token: token || undefined,
+      password: password || undefined,
+    },
+    role: 'operator',
+    scopes: ['operator.admin'],
+  }
+}
+
+function createGatewayWaiter(): GatewayWaiter {
+  const waiters = new Map<
+    string,
+    {
+      resolve: (v: unknown) => void
+      reject: (e: Error) => void
+    }
+  >()
+
+  function waitForRes(id: string) {
+    return new Promise<unknown>((resolve, reject) => {
+      waiters.set(id, { resolve, reject })
+    })
+  }
+
+  function handleMessage(evt: MessageEvent) {
+    try {
+      const data = typeof evt.data === 'string' ? evt.data : ''
+      const parsed = JSON.parse(data) as GatewayFrame
+      if (parsed.type !== 'res') return
+      const w = waiters.get(parsed.id)
+      if (!w) return
+      waiters.delete(parsed.id)
+      if (parsed.ok) w.resolve(parsed.payload)
+      else w.reject(new Error(parsed.error?.message ?? 'gateway error'))
+    } catch {
+      // ignore parse errors
+    }
+  }
+
+  return { waitForRes, handleMessage }
 }
 
 async function wsOpen(ws: WebSocket): Promise<void> {
@@ -83,24 +142,7 @@ export async function gatewayRpc<TPayload = unknown>(
 
     // 1) connect handshake (must be first request)
     const connectId = randomUUID()
-    const connectParams: ConnectParams = {
-      minProtocol: 3,
-      maxProtocol: 3,
-      client: {
-        id: 'gateway-client',
-        displayName: 'webclaw',
-        version: 'dev',
-        platform: process.platform,
-        mode: 'ui',
-        instanceId: randomUUID(),
-      },
-      auth: {
-        token: token || undefined,
-        password: password || undefined,
-      },
-      role: 'operator',
-      scopes: ['operator.admin'],
-    }
+    const connectParams = buildConnectParams(token, password)
 
     const connectReq: GatewayFrame = {
       type: 'req',
@@ -117,45 +159,48 @@ export async function gatewayRpc<TPayload = unknown>(
       params,
     }
 
-    // Response waiters keyed by id
-    const waiters = new Map<
-      string,
-      {
-        resolve: (v: any) => void
-        reject: (e: Error) => void
-      }
-    >()
+    const waiter = createGatewayWaiter()
 
-    const waitForRes = (id: string) =>
-      new Promise<any>((resolve, reject) => {
-        waiters.set(id, { resolve, reject })
-      })
-
-    const onMessage = (evt: MessageEvent) => {
-      try {
-        const data = typeof evt.data === 'string' ? evt.data : ''
-        const parsed = JSON.parse(data) as GatewayFrame
-        if (parsed.type !== 'res') return
-        const w = waiters.get(parsed.id)
-        if (!w) return
-        waiters.delete(parsed.id)
-        if (parsed.ok) w.resolve(parsed.payload)
-        else w.reject(new Error(parsed.error?.message ?? 'gateway error'))
-      } catch {
-        // ignore parse errors
-      }
-    }
-
-    ws.addEventListener('message', onMessage)
+    ws.addEventListener('message', waiter.handleMessage)
 
     ws.send(JSON.stringify(connectReq))
-    await waitForRes(connectId)
+    await waiter.waitForRes(connectId)
 
     ws.send(JSON.stringify(req))
-    const payload = await waitForRes(requestId)
+    const payload = await waiter.waitForRes(requestId)
 
-    ws.removeEventListener('message', onMessage)
+    ws.removeEventListener('message', waiter.handleMessage)
     return payload as TPayload
+  } finally {
+    try {
+      await wsClose(ws)
+    } catch {
+      // ignore
+    }
+  }
+}
+
+export async function gatewayConnectCheck(): Promise<void> {
+  const { url, token, password } = getGatewayConfig()
+
+  const ws = new WebSocket(url)
+  try {
+    await wsOpen(ws)
+
+    const connectId = randomUUID()
+    const connectParams = buildConnectParams(token, password)
+    const connectReq: GatewayFrame = {
+      type: 'req',
+      id: connectId,
+      method: 'connect',
+      params: connectParams,
+    }
+
+    const waiter = createGatewayWaiter()
+    ws.addEventListener('message', waiter.handleMessage)
+    ws.send(JSON.stringify(connectReq))
+    await waiter.waitForRes(connectId)
+    ws.removeEventListener('message', waiter.handleMessage)
   } finally {
     try {
       await wsClose(ws)
