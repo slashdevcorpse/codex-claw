@@ -3,7 +3,7 @@ import { CodeBlock, CodeBlockCode } from "@/components/ui/code-block";
 export function App() {
   return (
     <div
-      className="min-h-screen bg-[#fcfcfc] text-neutral-900 selection:bg-neutral-900 selection:text-white"
+      className="min-h-screen text-neutral-900 selection:bg-neutral-900 selection:text-white"
       style={{
         fontFamily: '"Inter", system-ui, -apple-system, "Segoe UI", sans-serif',
       }}

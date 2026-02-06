@@ -11,5 +11,5 @@ body {
   letter-spacing: -0.15px;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  overscroll-behavior: none;
+  background-color: #fcfcfc;
 }
