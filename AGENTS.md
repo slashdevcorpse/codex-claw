@@ -2,17 +2,17 @@
 
 ## Overview
 
-WebClaw built with React + TanStack Router + Tailwind CSS v4.
+WebClaw app lives in `apps/webclaw` and is built with React + TanStack Router + Tailwind CSS v4.
 
 ## Commands
 
-- `npm run dev` — Start development server
-- `npm run build` — Build for production
-- `npm run preview` — Preview production build
-- `npm run test` — Run tests
-- `npm run lint` — Run ESLint
-- `npm run format` — Run Prettier
-- `npm run check` — Format and lint fix
+- `pnpm -C apps/webclaw dev` — Start development server
+- `pnpm -C apps/webclaw build` — Build for production
+- `pnpm -C apps/webclaw preview` — Preview production build
+- `pnpm -C apps/webclaw test` — Run tests
+- `pnpm -C apps/webclaw lint` — Run ESLint
+- `pnpm -C apps/webclaw format` — Run Prettier
+- `pnpm -C apps/webclaw check` — Format and lint fix
 
 ## Conventions
 
@@ -26,9 +26,9 @@ WebClaw built with React + TanStack Router + Tailwind CSS v4.
 
 ### Routing & Structure
 
-- Routes live in `src/routes` using TanStack file routing.
-- Global styles and CSS variables live in `src/styles.css`.
-- Local environment values go in `.env.local`.
+- Routes live in `apps/webclaw/src/routes` using TanStack file routing.
+- Global styles and CSS variables live in `apps/webclaw/src/styles.css`.
+- Local environment values go in `apps/webclaw/.env.local`.
 
 ### UI & Styling
 

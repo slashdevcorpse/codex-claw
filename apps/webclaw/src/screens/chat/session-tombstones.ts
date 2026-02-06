@@ -16,9 +16,9 @@ export function clearSessionDeleted(id: string) {
   tombstones.delete(id)
 }
 
-export function filterSessionsWithTombstones<T extends { key: string; friendlyId: string }>(
-  sessions: Array<T>,
-) {
+export function filterSessionsWithTombstones<
+  T extends { key: string; friendlyId: string },
+>(sessions: Array<T>) {
   if (tombstones.size === 0) return sessions
   const now = Date.now()
   let changed = false
