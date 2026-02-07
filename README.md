@@ -1,6 +1,6 @@
 # WebClaw
 
-![Cover](./apps/webclaw/public/cover.webp)
+![Cover](https://raw.githubusercontent.com/ibelick/webclaw/main/apps/webclaw/public/cover.jpg)
 
 Fast web client for OpenClaw.
 
