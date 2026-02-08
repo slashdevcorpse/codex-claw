@@ -24,7 +24,7 @@ function ChatHeaderComponent({
   return (
     <div
       ref={wrapperRef}
-      className="border-b border-primary-200 px-4 h-12 flex items-center bg-surface"
+      className="border-b border-primary-200 px-4 h-12 flex items-center bg-surface justify-between"
     >
       {showSidebarButton ? (
         <Button
@@ -38,11 +38,7 @@ function ChatHeaderComponent({
         </Button>
       ) : null}
       <div className="text-sm font-medium truncate">{activeTitle}</div>
-      <ContextMeter
-        usedTokens={usedTokens}
-        maxTokens={maxTokens}
-        className="ml-3 hidden sm:flex"
-      />
+      <ContextMeter usedTokens={usedTokens} maxTokens={maxTokens} />
     </div>
   )
 }

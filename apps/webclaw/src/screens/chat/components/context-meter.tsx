@@ -1,58 +1,77 @@
 import { memo, useMemo } from 'react'
-import { cn } from '@/lib/utils'
+import {
+  PreviewCard,
+  PreviewCardPopup,
+  PreviewCardTrigger,
+} from '@/components/ui/preview-card'
 
 type ContextMeterProps = {
   usedTokens?: number
   maxTokens?: number
-  className?: string
 }
 
-function ContextMeterComponent({
-  usedTokens,
-  maxTokens,
-  className,
-}: ContextMeterProps) {
-  const { percentage, color, label } = useMemo(() => {
-    if (!usedTokens || !maxTokens) return { percentage: 0, color: '', label: '' }
+function ContextMeterComponent({ usedTokens, maxTokens }: ContextMeterProps) {
+  const { percentage, usedLabel, leftPercentage } = useMemo(() => {
+    if (!usedTokens || !maxTokens)
+      return {
+        percentage: 0,
+        usedLabel: '',
+        leftPercentage: 0,
+      }
     const pct = Math.min((usedTokens / maxTokens) * 100, 100)
     const fmt = (n: number) =>
       n >= 1000 ? `${(n / 1000).toFixed(0)}K` : String(n)
     return {
       percentage: pct,
-      color:
-        pct >= 90
-          ? 'bg-red-500'
-          : pct >= 70
-            ? 'bg-yellow-500'
-            : 'bg-green-500',
-      label: `${fmt(usedTokens)} / ${fmt(maxTokens)} tokens (${pct.toFixed(0)}%)`,
+      usedLabel: `${fmt(usedTokens)} / ${fmt(maxTokens)} tokens used`,
+      leftPercentage: Math.max(0, 100 - pct),
     }
   }, [usedTokens, maxTokens])
 
   if (!usedTokens || !maxTokens || percentage === 0) return null
 
   return (
-    <div
-      className={cn(
-        'flex items-center gap-2 text-xs text-primary-500',
-        className,
-      )}
-      title={label}
-    >
-      <div className="w-20 h-1.5 bg-primary-100 rounded-full overflow-hidden">
-        <div
-          className={cn(
-            'h-full rounded-full transition-all duration-500',
-            color,
-            percentage >= 95 && 'animate-pulse',
-          )}
-          style={{ width: `${percentage}%` }}
-        />
-      </div>
-      <span className="tabular-nums whitespace-nowrap">
-        {percentage.toFixed(0)}%
-      </span>
-    </div>
+    <PreviewCard>
+      <PreviewCardTrigger className="flex items-center gap-2 text-xs text-primary-500">
+        <div className="size-4 text-primary-200">
+          <svg
+            viewBox="0 0 36 36"
+            className="size-4 -rotate-90"
+            aria-hidden="true"
+          >
+            <circle
+              cx="18"
+              cy="18"
+              r="15.5"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="4"
+              className="text-primary-300"
+            />
+            <circle
+              cx="18"
+              cy="18"
+              r="15.5"
+              fill="none"
+              stroke="currentColor"
+              className="text-primary-600"
+              strokeWidth="4"
+              strokeLinecap="round"
+              strokeDasharray={`${(percentage / 100) * 97.4} 97.4`}
+            />
+          </svg>
+        </div>
+      </PreviewCardTrigger>
+      <PreviewCardPopup align="end" sideOffset={8} className="w-52 px-2 py-1">
+        <div className="space-y-0.5 text-xs text-primary-900">
+          <div className="text-primary-950 font-[450]">Context window:</div>
+          <div className="tabular-nums text-primary-700">
+            {percentage.toFixed(0)}% used ({leftPercentage.toFixed(0)}% left)
+          </div>
+          <div className="tabular-nums text-primary-700">{usedLabel}</div>
+        </div>
+      </PreviewCardPopup>
+    </PreviewCard>
   )
 }
 
