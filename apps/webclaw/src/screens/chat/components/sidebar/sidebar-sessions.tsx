@@ -14,8 +14,9 @@ import {
   ScrollAreaThumb,
 } from '@/components/ui/scroll-area'
 import { SessionItem } from './session-item'
+import { usePinnedSessions } from '@/hooks/use-pinned-sessions'
 import type { SessionMeta } from '../../types'
-import { memo } from 'react'
+import { memo, useCallback, useMemo } from 'react'
 
 type SidebarSessionsProps = {
   sessions: Array<SessionMeta>
@@ -34,6 +35,30 @@ export const SidebarSessions = memo(function SidebarSessions({
   onRename,
   onDelete,
 }: SidebarSessionsProps) {
+  const { pinnedSessionKeys, togglePinnedSession } = usePinnedSessions()
+
+  const pinnedSessionSet = useMemo(
+    () => new Set(pinnedSessionKeys),
+    [pinnedSessionKeys],
+  )
+
+  const pinnedSessions = useMemo(
+    () => sessions.filter((session) => pinnedSessionSet.has(session.key)),
+    [sessions, pinnedSessionSet],
+  )
+
+  const unpinnedSessions = useMemo(
+    () => sessions.filter((session) => !pinnedSessionSet.has(session.key)),
+    [sessions, pinnedSessionSet],
+  )
+
+  const handleTogglePin = useCallback(
+    (session: SessionMeta) => {
+      togglePinnedSession(session.key)
+    },
+    [togglePinnedSession],
+  )
+
   return (
     <Collapsible
       className="flex h-full flex-col flex-1 min-h-0 w-full"
@@ -55,12 +80,31 @@ export const SidebarSessions = memo(function SidebarSessions({
         <ScrollAreaRoot className="flex-1 min-h-0">
           <ScrollAreaViewport className="min-h-0">
             <div className="flex flex-col gap-px pl-2 pr-2">
-              {sessions.map((session) => (
+              {pinnedSessions.map((session) => (
                 <SessionItem
                   key={session.key}
                   session={session}
                   active={session.friendlyId === activeFriendlyId}
+                  isPinned
                   onSelect={onSelect}
+                  onTogglePin={handleTogglePin}
+                  onRename={onRename}
+                  onDelete={onDelete}
+                />
+              ))}
+
+              {pinnedSessions.length > 0 && unpinnedSessions.length > 0 ? (
+                <div className="my-1 border-t border-primary-200/80" />
+              ) : null}
+
+              {unpinnedSessions.map((session) => (
+                <SessionItem
+                  key={session.key}
+                  session={session}
+                  active={session.friendlyId === activeFriendlyId}
+                  isPinned={false}
+                  onSelect={onSelect}
+                  onTogglePin={handleTogglePin}
                   onRename={onRename}
                   onDelete={onDelete}
                 />
