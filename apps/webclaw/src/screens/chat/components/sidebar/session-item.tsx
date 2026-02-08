@@ -8,6 +8,8 @@ import {
   Pen01Icon,
   PinIcon,
 } from '@hugeicons/core-free-icons'
+import { memo } from 'react'
+import type { SessionMeta } from '../../types'
 import { cn } from '@/lib/utils'
 import {
   MenuContent,
@@ -15,8 +17,6 @@ import {
   MenuRoot,
   MenuTrigger,
 } from '@/components/ui/menu'
-import { memo } from 'react'
-import type { SessionMeta } from '../../types'
 
 type SessionItemProps = {
   session: SessionMeta
@@ -58,22 +58,6 @@ function SessionItemComponent({
         <div className="text-sm font-[450] line-clamp-1">{label}</div>
       </div>
       <div className="inline-flex items-center">
-        <button
-          type="button"
-          onClick={(event) => {
-            event.preventDefault()
-            event.stopPropagation()
-            onTogglePin(session)
-          }}
-          className={cn(
-            'inline-flex size-7 items-center justify-center rounded-md text-primary-700 hover:bg-primary-200',
-            isPinned ? 'opacity-100' : 'opacity-0 group-hover:opacity-100',
-          )}
-          aria-label={isPinned ? 'Unpin session' : 'Pin session'}
-          title={isPinned ? 'Unpin session' : 'Pin session'}
-        >
-          <HugeiconsIcon icon={PinIcon} size={16} strokeWidth={1.7} />
-        </button>
         <MenuRoot>
           <MenuTrigger
             type="button"

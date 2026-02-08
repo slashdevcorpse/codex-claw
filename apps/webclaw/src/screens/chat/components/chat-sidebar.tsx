@@ -6,7 +6,14 @@ import {
 } from '@hugeicons/core-free-icons'
 import { AnimatePresence, motion } from 'motion/react'
 import { memo, useState } from 'react'
+import { Link } from '@tanstack/react-router'
+import { useChatSettings } from '../hooks/use-chat-settings'
+import { useDeleteSession } from '../hooks/use-delete-session'
+import { useRenameSession } from '../hooks/use-rename-session'
 import { SettingsDialog } from './settings-dialog'
+import { SessionRenameDialog } from './sidebar/session-rename-dialog'
+import { SessionDeleteDialog } from './sidebar/session-delete-dialog'
+import { SidebarSessions } from './sidebar/sidebar-sessions'
 import type { SessionMeta } from '../types'
 import {
   TooltipContent,
@@ -14,15 +21,8 @@ import {
   TooltipRoot,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { SessionRenameDialog } from './sidebar/session-rename-dialog'
-import { SessionDeleteDialog } from './sidebar/session-delete-dialog'
-import { SidebarSessions } from './sidebar/sidebar-sessions'
 import { cn } from '@/lib/utils'
-import { useChatSettings } from '../hooks/use-chat-settings'
-import { useDeleteSession } from '../hooks/use-delete-session'
-import { useRenameSession } from '../hooks/use-rename-session'
 import { Button, buttonVariants } from '@/components/ui/button'
-import { Link } from '@tanstack/react-router'
 import { WebClawIconBig } from '@/components/icons/webclaw-big'
 
 type ChatSidebarProps = {
@@ -129,7 +129,7 @@ function ChatSidebarComponent({
       <motion.div
         layout
         transition={{ layout: transition }}
-        className={cn('flex items-center h-12 px-2 justify-between')}
+        className="flex items-center h-12 px-2 justify-between"
       >
         <AnimatePresence initial={false}>
           {!isCollapsed ? (
