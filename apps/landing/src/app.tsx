@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
+import type { FormEvent } from "react";
 import { CodeBlock, CodeBlockCode } from "@/components/ui/code-block";
 import {
   DialogClose,
@@ -16,17 +17,60 @@ import { Textarea } from "@/components/ui/textarea";
 export function App() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [hasSubmitted, setHasSubmitted] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submittedAt, setSubmittedAt] = useState(() => String(Date.now()));
 
   function handleDialogOpenChange(nextOpen: boolean) {
     setIsDialogOpen(nextOpen);
     if (!nextOpen) {
       setHasSubmitted(false);
+      setSubmitError(null);
+    } else {
+      setSubmittedAt(String(Date.now()));
     }
   }
 
-  function handleWorkspaceSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function handleWorkspaceSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setHasSubmitted(true);
+    if (isSubmitting) {
+      return;
+    }
+
+    const form = event.currentTarget;
+    const formData = new FormData(form);
+    const payload = {
+      workEmail: String(formData.get("workEmail") ?? ""),
+      companyName: String(formData.get("companyName") ?? ""),
+      companySize: String(formData.get("companySize") ?? ""),
+      role: String(formData.get("role") ?? ""),
+      usage: String(formData.get("usage") ?? ""),
+      website: String(formData.get("website") ?? ""),
+      submittedAt: String(formData.get("submittedAt") ?? ""),
+    };
+
+    setIsSubmitting(true);
+    setSubmitError(null);
+
+    try {
+      const response = await fetch("/api/lead", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        throw new Error("Request failed");
+      }
+
+      setHasSubmitted(true);
+    } catch (error) {
+      setSubmitError("Something went wrong. Try again in a moment.");
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   return (
@@ -110,7 +154,7 @@ export function App() {
                   </DialogTitle>
                   <DialogDescription className="mt-2">
                     {hasSubmitted ? (
-                      "Thanks for the details. We'll follow up with early access."
+                      "Thanks for the details. You're on the list. We'll follow up with early access."
                     ) : (
                       <>
                         Shared sessions, history, and a real workspace for
@@ -145,22 +189,32 @@ export function App() {
                       className="mt-6 grid gap-4 sm:grid-cols-2"
                       onSubmit={handleWorkspaceSubmit}
                     >
+                      <input
+                        autoComplete="off"
+                        className="hidden"
+                        name="website"
+                        tabIndex={-1}
+                        type="text"
+                      />
+                      <input name="submittedAt" type="hidden" value={submittedAt} />
                       <label className="flex flex-col gap-1.5 text-sm text-neutral-700">
                         Work email (required)
                         <Input
                           placeholder="alex@company.com"
                           type="email"
                           required
+                          name="workEmail"
                         />
                       </label>
                       <label className="flex flex-col gap-1.5 text-sm text-neutral-700">
-                        Company name
-                        <Input placeholder="OpenClaw" />
+                        Company / team name (optional)
+                        <Input placeholder="Company or team" name="companyName" />
                       </label>
                       <label className="flex flex-col gap-1.5 text-sm text-neutral-700">
                         Company size
                         <Select
                           placeholder="Select size"
+                          name="companySize"
                           options={[
                             { value: "1-10", label: "1-10" },
                             { value: "11-50", label: "11-50" },
@@ -171,16 +225,24 @@ export function App() {
                         />
                       </label>
                       <label className="flex flex-col gap-1.5 text-sm text-neutral-700">
-                        Your role
-                        <Input placeholder="eg. Engineering lead" />
+                        Your role (optional)
+                        <Input placeholder="eg. Engineering lead" name="role" />
                       </label>
                       <label className="flex flex-col gap-1.5 text-sm text-neutral-700 sm:col-span-2">
-                        How are you using OpenClaw today?
-                        <Textarea placeholder="Share your use case, infra needs, or rollout plans." />
+                        How are you using OpenClaw today? (optional short text)
+                        <Textarea
+                          placeholder="Share your use case, infra needs, or rollout plans."
+                          name="usage"
+                        />
                       </label>
+                      {submitError ? (
+                        <p className="sm:col-span-2 text-sm text-neutral-500">
+                          {submitError}
+                        </p>
+                      ) : null}
                       <div className="sm:col-span-2 flex justify-end">
-                        <Button size="sm" type="submit">
-                          Request access
+                        <Button size="sm" type="submit" disabled={isSubmitting}>
+                          {isSubmitting ? "Submitting..." : "Request access"}
                         </Button>
                       </div>
                     </form>

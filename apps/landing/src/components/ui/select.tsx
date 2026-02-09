@@ -12,6 +12,7 @@ type SelectProps = {
   options: Array<SelectOption>;
   onValueChange?: (value: string | null) => void;
   className?: string;
+  name?: string;
 };
 
 export function Select({
@@ -21,12 +22,14 @@ export function Select({
   options,
   onValueChange,
   className,
+  name,
 }: SelectProps) {
   return (
     <SelectPrimitive.Root
       value={value}
       defaultValue={defaultValue}
       onValueChange={onValueChange}
+      name={name}
     >
       <SelectPrimitive.Trigger
         className={[
