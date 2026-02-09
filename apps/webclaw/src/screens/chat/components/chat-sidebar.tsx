@@ -1,12 +1,13 @@
 import { HugeiconsIcon } from '@hugeicons/react'
 import {
   PencilEdit02Icon,
+  Search01Icon,
   Settings01Icon,
   SidebarLeft01Icon,
 } from '@hugeicons/core-free-icons'
 import { AnimatePresence, motion } from 'motion/react'
 import { memo, useState } from 'react'
-import { Link } from '@tanstack/react-router'
+import { Link, useNavigate } from '@tanstack/react-router'
 import { useChatSettings } from '../hooks/use-chat-settings'
 import { useDeleteSession } from '../hooks/use-delete-session'
 import { useRenameSession } from '../hooks/use-rename-session'
@@ -14,6 +15,7 @@ import { SettingsDialog } from './settings-dialog'
 import { SessionRenameDialog } from './sidebar/session-rename-dialog'
 import { SessionDeleteDialog } from './sidebar/session-delete-dialog'
 import { SidebarSessions } from './sidebar/sidebar-sessions'
+import { CommandSessionDialog } from './command-session'
 import type { SessionMeta } from '../types'
 import {
   TooltipContent,
@@ -72,6 +74,21 @@ function ChatSidebarComponent({
   const [deleteSessionKey, setDeleteSessionKey] = useState<string | null>(null)
   const [deleteFriendlyId, setDeleteFriendlyId] = useState<string | null>(null)
   const [deleteSessionTitle, setDeleteSessionTitle] = useState('')
+  const [searchDialogOpen, setSearchDialogOpen] = useState(false)
+  const navigate = useNavigate()
+
+  function handleSearchDialogOpenChange(nextOpen: boolean) {
+    setSearchDialogOpen(nextOpen)
+  }
+
+  function handleSearchSelect(session: SessionMeta) {
+    setSearchDialogOpen(false)
+    void navigate({
+      to: '/chat/$sessionKey',
+      params: { sessionKey: session.friendlyId },
+    })
+    onSelectSession?.()
+  }
 
   function handleOpenRename(session: SessionMeta) {
     setRenameSessionKey(session.key)
@@ -173,7 +190,7 @@ function ChatSidebarComponent({
         </TooltipProvider>
       </motion.div>
 
-      <div className="px-2 mb-4">
+      <div className="px-2 mb-4 gap-px flex flex-col">
         <motion.div
           layout
           transition={{ layout: transition }}
@@ -208,7 +225,46 @@ function ChatSidebarComponent({
             </AnimatePresence>
           </Button>
         </motion.div>
+        <motion.div
+          layout
+          transition={{ layout: transition }}
+          className="w-full"
+        >
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setSearchDialogOpen(true)}
+            className="w-full pl-1.5 justify-start"
+          >
+            <HugeiconsIcon
+              icon={Search01Icon}
+              size={20}
+              strokeWidth={1.5}
+              className="min-w-5"
+            />
+            <AnimatePresence initial={false} mode="wait">
+              {!isCollapsed && (
+                <motion.span
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={transition}
+                  className="overflow-hidden whitespace-nowrap"
+                >
+                  Search sessions
+                </motion.span>
+              )}
+            </AnimatePresence>
+          </Button>
+        </motion.div>
       </div>
+
+      <CommandSessionDialog
+        sessions={sessions}
+        open={searchDialogOpen}
+        onOpenChange={handleSearchDialogOpenChange}
+        onSelect={handleSearchSelect}
+      />
 
       <div className="flex-1 min-h-0 overflow-hidden">
         <AnimatePresence initial={false}>
