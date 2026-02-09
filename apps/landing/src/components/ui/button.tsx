@@ -18,7 +18,7 @@ const variantClasses: Record<ButtonVariant, string> = {
 };
 
 const sizeClasses: Record<ButtonSize, string> = {
-  md: "px-5 py-2.5 text-sm",
+  md: "px-5 py-2.5 text-base",
   sm: "px-4 py-2 text-sm",
 };
 
@@ -32,7 +32,7 @@ export function Button({
   const typeValue: React.ButtonHTMLAttributes<HTMLButtonElement>["type"] =
     render ? undefined : "button";
   const classes = [
-    "inline-flex items-center justify-center gap-2 rounded-full font-medium transition-colors",
+    "inline-flex items-center justify-center gap-1.5 rounded-full font-[450] transition-colors",
     sizeClasses[size],
     variantClasses[variant],
     className,

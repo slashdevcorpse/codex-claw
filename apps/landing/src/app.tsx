@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { useState } from "react";
 import { CodeBlock, CodeBlockCode } from "@/components/ui/code-block";
 import {
   DialogClose,
@@ -13,6 +14,21 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 
 export function App() {
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [hasSubmitted, setHasSubmitted] = useState(false);
+
+  function handleDialogOpenChange(nextOpen: boolean) {
+    setIsDialogOpen(nextOpen);
+    if (!nextOpen) {
+      setHasSubmitted(false);
+    }
+  }
+
+  function handleWorkspaceSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setHasSubmitted(true);
+  }
+
   return (
     <div
       className="min-h-screen text-neutral-900 selection:bg-neutral-900 selection:text-white"
@@ -26,11 +42,15 @@ export function App() {
             <h1 className="font-medium">WebClaw</h1>
             <p className="text-neutral-500">Fast web client for OpenClaw.</p>
             <div className="flex flex-wrap gap-3">
-              <a
-                className="inline-flex items-center gap-1.5 rounded-full bg-neutral-900 px-5 py-2.5 text-white select-none"
-                href="https://github.com/ibelick/webclaw"
-                target="_blank"
-                rel="noopener noreferrer"
+              <Button
+                className="gap-1.5"
+                onClick={() =>
+                  window.open(
+                    "https://github.com/ibelick/webclaw",
+                    "_blank",
+                    "noopener,noreferrer"
+                  )
+                }
               >
                 Github Repository
                 <svg
@@ -56,20 +76,48 @@ export function App() {
                     strokeLinejoin="round"
                   ></path>
                 </svg>
-              </a>
-              <DialogRoot>
+              </Button>
+              <DialogRoot
+                open={isDialogOpen}
+                onOpenChange={handleDialogOpenChange}
+              >
                 <DialogTrigger
                   render={(props) => (
-                    <Button variant="secondary" {...props}>
-                      Request workspace access
+                    <Button size="md" variant="secondary" {...props}>
+                      Workspace access{" "}
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="128"
+                        height="128"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        className="size-4"
+                      >
+                        <path
+                          d="M9.00005 6C9.00005 6 15 10.4189 15 12C15 13.5812 9 18 9 18"
+                          stroke="#000000"
+                          strokeWidth="1.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        ></path>
+                      </svg>
                     </Button>
                   )}
                 />
                 <DialogContent>
-                  <DialogTitle>For teams</DialogTitle>
+                  <DialogTitle>
+                    {hasSubmitted ? "You're on the list" : "Workspace access"}
+                  </DialogTitle>
                   <DialogDescription className="mt-2">
-                    Tell us about your team and we will help you set up WebClaw
-                    at scale.
+                    {hasSubmitted ? (
+                      "Thanks for the details. We'll follow up with early access."
+                    ) : (
+                      <>
+                        Shared sessions, history, and a real workspace for
+                        OpenClaw. <br />
+                        Request early access.
+                      </>
+                    )}
                   </DialogDescription>
                   <DialogClose aria-label="Close">
                     <svg
@@ -86,40 +134,57 @@ export function App() {
                       />
                     </svg>
                   </DialogClose>
-                  <form className="mt-6 grid gap-4 sm:grid-cols-2">
-                    <label className="flex flex-col gap-2 text-sm text-neutral-700">
-                      Name
-                      <Input placeholder="Alex Doe" />
-                    </label>
-                    <label className="flex flex-col gap-2 text-sm text-neutral-700">
-                      Work email
-                      <Input placeholder="eliud@company.com" type="email" />
-                    </label>
-                    <label className="flex flex-col gap-2 text-sm text-neutral-700">
-                      Company
-                      <Input placeholder="Company name" />
-                    </label>
-                    <label className="flex flex-col gap-2 text-sm text-neutral-700">
-                      Team size
-                      <Select
-                        placeholder="Select size"
-                        options={[
-                          { value: "1-10", label: "1-10" },
-                          { value: "11-50", label: "11-50" },
-                          { value: "51-200", label: "51-200" },
-                          { value: "201-500", label: "201-500" },
-                          { value: "500+", label: "500+" },
-                        ]}
-                      />
-                    </label>
-                    <label className="flex flex-col gap-2 text-sm text-neutral-700 sm:col-span-2">
-                      What do you want to build?
-                      <Textarea placeholder="Share your use case, infra needs, or rollout plans." />
-                    </label>
-                    <div className="sm:col-span-2 flex justify-end">
-                      <Button>Request access</Button>
+                  {hasSubmitted ? (
+                    <div className="mt-6 flex justify-end">
+                      <Button size="sm" onClick={() => setIsDialogOpen(false)}>
+                        Close
+                      </Button>
                     </div>
-                  </form>
+                  ) : (
+                    <form
+                      className="mt-6 grid gap-4 sm:grid-cols-2"
+                      onSubmit={handleWorkspaceSubmit}
+                    >
+                      <label className="flex flex-col gap-1.5 text-sm text-neutral-700">
+                        Work email (required)
+                        <Input
+                          placeholder="alex@company.com"
+                          type="email"
+                          required
+                        />
+                      </label>
+                      <label className="flex flex-col gap-1.5 text-sm text-neutral-700">
+                        Company name
+                        <Input placeholder="OpenClaw" />
+                      </label>
+                      <label className="flex flex-col gap-1.5 text-sm text-neutral-700">
+                        Company size
+                        <Select
+                          placeholder="Select size"
+                          options={[
+                            { value: "1-10", label: "1-10" },
+                            { value: "11-50", label: "11-50" },
+                            { value: "51-200", label: "51-200" },
+                            { value: "201-500", label: "201-500" },
+                            { value: "500+", label: "500+" },
+                          ]}
+                        />
+                      </label>
+                      <label className="flex flex-col gap-1.5 text-sm text-neutral-700">
+                        Your role
+                        <Input placeholder="eg. Engineering lead" />
+                      </label>
+                      <label className="flex flex-col gap-1.5 text-sm text-neutral-700 sm:col-span-2">
+                        How are you using OpenClaw today?
+                        <Textarea placeholder="Share your use case, infra needs, or rollout plans." />
+                      </label>
+                      <div className="sm:col-span-2 flex justify-end">
+                        <Button size="sm" type="submit">
+                          Request access
+                        </Button>
+                      </div>
+                    </form>
+                  )}
                 </DialogContent>
               </DialogRoot>
             </div>

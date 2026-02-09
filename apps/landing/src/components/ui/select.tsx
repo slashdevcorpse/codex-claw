@@ -38,7 +38,10 @@ export function Select({
           .filter(Boolean)
           .join(" ")}
       >
-        <SelectPrimitive.Value placeholder={placeholder} />
+        <SelectPrimitive.Value
+          placeholder={placeholder}
+          className="text-neutral-900 data-placeholder:text-neutral-400"
+        />
         <SelectPrimitive.Icon className="text-neutral-400">
           <svg
             viewBox="0 0 20 20"
