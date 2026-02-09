@@ -1,8 +1,8 @@
 'use client'
 
-import { useRef, useCallback } from 'react'
+import { useCallback, useRef } from 'react'
 import { HugeiconsIcon } from '@hugeicons/react'
-import { Attachment01Icon } from '@hugeicons/core-free-icons'
+import { PlusSignIcon } from '@hugeicons/core-free-icons'
 
 import { Button } from '@/components/ui/button'
 
@@ -15,14 +15,19 @@ const MAX_IMAGE_DIMENSION = 1280
 /** Initial JPEG compression quality (0-1) */
 const IMAGE_QUALITY = 0.75
 
-/** 
+/**
  * Target compressed image size in bytes (~300KB).
  * WebSocket limit is 512KB, and base64 encoding adds ~33% overhead.
  */
 const TARGET_IMAGE_SIZE = 300 * 1024
 
 /** Supported image MIME types */
-const ACCEPTED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp']
+const ACCEPTED_IMAGE_TYPES = [
+  'image/png',
+  'image/jpeg',
+  'image/gif',
+  'image/webp',
+]
 
 /** File extensions accepted by the file input */
 const ACCEPTED_EXTENSIONS = '.png,.jpg,.jpeg,.gif,.webp'
@@ -46,12 +51,8 @@ export type AttachmentFile = {
 }
 
 type AttachmentButtonProps = {
-  /** Callback when a file is selected */
   onFileSelect: (file: AttachmentFile) => void
-  /** Whether the button is disabled */
   disabled?: boolean
-  /** Additional CSS classes */
-  className?: string
 }
 
 /**
@@ -61,7 +62,7 @@ function isCanvasSupported(): boolean {
   if (typeof document === 'undefined') return false
   try {
     const canvas = document.createElement('canvas')
-    return Boolean(canvas.getContext && canvas.getContext('2d'))
+    return Boolean(canvas.getContext('2d'))
   } catch {
     return false
   }
@@ -69,11 +70,11 @@ function isCanvasSupported(): boolean {
 
 /**
  * Compresses and resizes an image using the Canvas API.
- * 
+ *
  * - Resizes images larger than MAX_IMAGE_DIMENSION
  * - Converts to JPEG (except PNG which may have transparency)
  * - Progressively reduces quality until under TARGET_IMAGE_SIZE
- * 
+ *
  * @param file - Image file to compress
  * @returns Base64-encoded compressed image (without data URL prefix)
  * @throws Error if canvas is unavailable or image fails to load
@@ -96,7 +97,7 @@ async function compressImage(file: File): Promise<string> {
         // Calculate new dimensions maintaining aspect ratio
         let width = img.width
         let height = img.height
-        
+
         if (width > MAX_IMAGE_DIMENSION || height > MAX_IMAGE_DIMENSION) {
           if (width > height) {
             height = Math.round((height * MAX_IMAGE_DIMENSION) / width)
@@ -111,23 +112,24 @@ async function compressImage(file: File): Promise<string> {
         const canvas = document.createElement('canvas')
         canvas.width = width
         canvas.height = height
-        
+
         const ctx = canvas.getContext('2d')
         if (!ctx) {
           cleanup()
           reject(new Error('Failed to get canvas context'))
           return
         }
-        
+
         ctx.drawImage(img, 0, 0, width, height)
-        
+
         // Use PNG for images that might have transparency, JPEG otherwise
-        const outputType = file.type === 'image/png' ? 'image/png' : 'image/jpeg'
+        const outputType =
+          file.type === 'image/png' ? 'image/png' : 'image/jpeg'
         let quality = IMAGE_QUALITY
-        
+
         // Progressive quality reduction for JPEG
         let dataUrl = canvas.toDataURL(outputType, quality)
-        
+
         if (outputType === 'image/jpeg') {
           const targetDataUrlSize = TARGET_IMAGE_SIZE * 1.37
           while (dataUrl.length > targetDataUrlSize && quality > 0.3) {
@@ -135,7 +137,7 @@ async function compressImage(file: File): Promise<string> {
             dataUrl = canvas.toDataURL(outputType, quality)
           }
         }
-        
+
         // Extract base64 from data URL
         const base64 = dataUrl.split(',')[1]
         if (!base64) {
@@ -148,15 +150,17 @@ async function compressImage(file: File): Promise<string> {
         resolve(base64)
       } catch (err) {
         cleanup()
-        reject(err instanceof Error ? err : new Error('Image compression failed'))
+        reject(
+          err instanceof Error ? err : new Error('Image compression failed'),
+        )
       }
     }
-    
+
     img.onerror = () => {
       cleanup()
       reject(new Error('Failed to load image'))
     }
-    
+
     img.src = objectUrl
   })
 }
@@ -170,7 +174,7 @@ function isAcceptedImage(file: File): boolean {
 
 /**
  * Button component for attaching images to messages.
- * 
+ *
  * Features:
  * - Accepts PNG, JPG, GIF, WebP images
  * - Automatically compresses and resizes large images
@@ -180,7 +184,6 @@ function isAcceptedImage(file: File): boolean {
 export function AttachmentButton({
   onFileSelect,
   disabled = false,
-  className,
 }: AttachmentButtonProps) {
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -206,7 +209,8 @@ export function AttachmentButton({
           preview: null,
           type: 'image',
           base64: null,
-          error: 'Unsupported file type. Please use PNG, JPG, GIF, or WebP images.',
+          error:
+            'Unsupported file type. Please use PNG, JPG, GIF, or WebP images.',
         })
         return
       }
@@ -264,11 +268,11 @@ export function AttachmentButton({
         size="icon-sm"
         onClick={handleClick}
         disabled={disabled}
-        className={className}
+        className="rounded-full"
         aria-label="Attach image"
         type="button"
       >
-        <HugeiconsIcon icon={Attachment01Icon} size={18} strokeWidth={1.8} />
+        <HugeiconsIcon icon={PlusSignIcon} size={20} strokeWidth={1.5} />
       </Button>
     </>
   )

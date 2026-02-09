@@ -3,6 +3,7 @@ import { HugeiconsIcon } from '@hugeicons/react'
 import { ArrowUp02Icon } from '@hugeicons/core-free-icons'
 import type { Ref } from 'react'
 
+import type { AttachmentFile } from '@/components/attachment-button'
 import {
   PromptInput,
   PromptInputAction,
@@ -10,7 +11,7 @@ import {
   PromptInputTextarea,
 } from '@/components/prompt-kit/prompt-input'
 import { Button } from '@/components/ui/button'
-import { AttachmentButton, type AttachmentFile } from '@/components/attachment-button'
+import { AttachmentButton } from '@/components/attachment-button'
 import { AttachmentPreviewList } from '@/components/attachment-preview'
 
 type ChatComposerProps = {
@@ -23,7 +24,7 @@ type ChatComposerProps = {
 type ChatComposerHelpers = {
   reset: () => void
   setValue: (value: string) => void
-  attachments?: AttachmentFile[]
+  attachments?: Array<AttachmentFile>
 }
 
 function ChatComposerComponent({
@@ -33,7 +34,7 @@ function ChatComposerComponent({
   wrapperRef,
 }: ChatComposerProps) {
   const [value, setValue] = useState('')
-  const [attachments, setAttachments] = useState<AttachmentFile[]>([])
+  const [attachments, setAttachments] = useState<Array<AttachmentFile>>([])
   const promptRef = useRef<HTMLTextAreaElement | null>(null)
   const focusPrompt = useCallback(() => {
     if (typeof window === 'undefined') return
@@ -43,14 +44,27 @@ function ChatComposerComponent({
   }, [])
   const reset = useCallback(() => {
     setValue('')
-    setAttachments([])
+    setAttachments((prev) => {
+      prev.forEach((attachment) => {
+        if (attachment.preview) {
+          URL.revokeObjectURL(attachment.preview)
+        }
+      })
+      return []
+    })
     focusPrompt()
   }, [focusPrompt])
   const handleFileSelect = useCallback((file: AttachmentFile) => {
     setAttachments((prev) => [...prev, file])
   }, [])
   const handleRemoveAttachment = useCallback((id: string) => {
-    setAttachments((prev) => prev.filter((a) => a.id !== id))
+    setAttachments((prev) => {
+      const removed = prev.find((attachment) => attachment.id === id)
+      if (removed?.preview) {
+        URL.revokeObjectURL(removed.preview)
+      }
+      return prev.filter((attachment) => attachment.id !== id)
+    })
   }, [])
   const setComposerValue = useCallback(
     (nextValue: string) => {
@@ -65,11 +79,24 @@ function ChatComposerComponent({
     // Allow submit if there's text OR valid attachments
     const validAttachments = attachments.filter((a) => !a.error && a.base64)
     if (body.length === 0 && validAttachments.length === 0) return
-    onSubmit(body, { reset, setValue: setComposerValue, attachments: validAttachments })
+    onSubmit(body, {
+      reset,
+      setValue: setComposerValue,
+      attachments: validAttachments,
+    })
     focusPrompt()
-  }, [disabled, focusPrompt, onSubmit, reset, setComposerValue, value, attachments])
+  }, [
+    disabled,
+    focusPrompt,
+    onSubmit,
+    reset,
+    setComposerValue,
+    value,
+    attachments,
+  ])
   const validAttachments = attachments.filter((a) => !a.error && a.base64)
-  const submitDisabled = disabled || (value.trim().length === 0 && validAttachments.length === 0)
+  const submitDisabled =
+    disabled || (value.trim().length === 0 && validAttachments.length === 0)
 
   return (
     <div
@@ -92,7 +119,7 @@ function ChatComposerComponent({
           inputRef={promptRef}
         />
         <PromptInputActions className="justify-end px-3">
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-2">
             <PromptInputAction tooltip="Attach image">
               <AttachmentButton
                 onFileSelect={handleFileSelect}
@@ -107,7 +134,11 @@ function ChatComposerComponent({
                 className="rounded-full"
                 aria-label="Send message"
               >
-                <HugeiconsIcon icon={ArrowUp02Icon} size={18} strokeWidth={2} />
+                <HugeiconsIcon
+                  icon={ArrowUp02Icon}
+                  size={20}
+                  strokeWidth={1.5}
+                />
               </Button>
             </PromptInputAction>
           </div>
