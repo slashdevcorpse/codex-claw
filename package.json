@@ -13,6 +13,10 @@
     "test": "pnpm -C apps/webclaw test",
     "lint": "pnpm -C apps/webclaw lint",
     "format": "pnpm -C apps/webclaw format",
-    "check": "pnpm -C apps/webclaw check"
+    "check": "pnpm -C apps/webclaw check",
+    "postinstall": "lefthook install"
+  },
+  "devDependencies": {
+    "lefthook": "^1.11.1"
   }
 }
