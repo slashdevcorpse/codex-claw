@@ -1,6 +1,78 @@
+import { Button } from "@/components/ui/button";
+import { useState } from "react";
+import type { FormEvent } from "react";
 import { CodeBlock, CodeBlockCode } from "@/components/ui/code-block";
+import {
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogRoot,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 
 export function App() {
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [hasSubmitted, setHasSubmitted] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submittedAt, setSubmittedAt] = useState(() => String(Date.now()));
+
+  function handleDialogOpenChange(nextOpen: boolean) {
+    setIsDialogOpen(nextOpen);
+    if (!nextOpen) {
+      setHasSubmitted(false);
+      setSubmitError(null);
+    } else {
+      setSubmittedAt(String(Date.now()));
+    }
+  }
+
+  async function handleWorkspaceSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (isSubmitting) {
+      return;
+    }
+
+    const form = event.currentTarget;
+    const formData = new FormData(form);
+    const payload = {
+      workEmail: String(formData.get("workEmail") ?? ""),
+      companyName: String(formData.get("companyName") ?? ""),
+      companySize: String(formData.get("companySize") ?? ""),
+      role: String(formData.get("role") ?? ""),
+      usage: String(formData.get("usage") ?? ""),
+      website: String(formData.get("website") ?? ""),
+      submittedAt: String(formData.get("submittedAt") ?? ""),
+    };
+
+    setIsSubmitting(true);
+    setSubmitError(null);
+
+    try {
+      const response = await fetch("/api/lead", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        throw new Error("Request failed");
+      }
+
+      setHasSubmitted(true);
+    } catch (error) {
+      setSubmitError("Something went wrong. Try again in a moment.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
   return (
     <div
       className="min-h-screen text-neutral-900 selection:bg-neutral-900 selection:text-white"
@@ -14,11 +86,15 @@ export function App() {
             <h1 className="font-medium">WebClaw</h1>
             <p className="text-neutral-500">Fast web client for OpenClaw.</p>
             <div className="flex flex-wrap gap-3">
-              <a
-                className="inline-flex items-center gap-1.5 rounded-full bg-neutral-900 px-5 py-2.5 text-white select-none"
-                href="https://github.com/ibelick/webclaw"
-                target="_blank"
-                rel="noopener noreferrer"
+              <Button
+                className="gap-1.5"
+                onClick={() =>
+                  window.open(
+                    "https://github.com/ibelick/webclaw",
+                    "_blank",
+                    "noopener,noreferrer"
+                  )
+                }
               >
                 Github Repository
                 <svg
@@ -44,7 +120,135 @@ export function App() {
                     strokeLinejoin="round"
                   ></path>
                 </svg>
-              </a>
+              </Button>
+              <DialogRoot
+                open={isDialogOpen}
+                onOpenChange={handleDialogOpenChange}
+              >
+                <DialogTrigger
+                  render={(props) => (
+                    <Button size="md" variant="secondary" {...props}>
+                      Workspace access{" "}
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="128"
+                        height="128"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        className="size-4"
+                      >
+                        <path
+                          d="M9.00005 6C9.00005 6 15 10.4189 15 12C15 13.5812 9 18 9 18"
+                          stroke="#000000"
+                          strokeWidth="1.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        ></path>
+                      </svg>
+                    </Button>
+                  )}
+                />
+                <DialogContent>
+                  <DialogTitle>
+                    {hasSubmitted ? "You're on the list" : "Workspace access"}
+                  </DialogTitle>
+                  <DialogDescription className="mt-2">
+                    {hasSubmitted ? (
+                      "Thanks for the details. You're on the list. We'll follow up with early access."
+                    ) : (
+                      <>
+                        Shared sessions, history, and a real workspace for
+                        OpenClaw. <br />
+                        Request early access.
+                      </>
+                    )}
+                  </DialogDescription>
+                  <DialogClose aria-label="Close">
+                    <svg
+                      viewBox="0 0 20 20"
+                      aria-hidden="true"
+                      className="size-4"
+                      fill="none"
+                    >
+                      <path
+                        d="M5 5l10 10M15 5L5 15"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                  </DialogClose>
+                  {hasSubmitted ? (
+                    <div className="mt-6 flex justify-end">
+                      <Button size="sm" onClick={() => setIsDialogOpen(false)}>
+                        Close
+                      </Button>
+                    </div>
+                  ) : (
+                    <form
+                      className="mt-6 grid gap-4 sm:grid-cols-2"
+                      onSubmit={handleWorkspaceSubmit}
+                    >
+                      <input
+                        autoComplete="off"
+                        className="hidden"
+                        name="website"
+                        tabIndex={-1}
+                        type="text"
+                      />
+                      <input name="submittedAt" type="hidden" value={submittedAt} />
+                      <label className="flex flex-col gap-1.5 text-sm text-neutral-700">
+                        Work email (required)
+                        <Input
+                          placeholder="alex@company.com"
+                          type="email"
+                          required
+                          name="workEmail"
+                        />
+                      </label>
+                      <label className="flex flex-col gap-1.5 text-sm text-neutral-700">
+                        Company / team name (optional)
+                        <Input placeholder="Company or team" name="companyName" />
+                      </label>
+                      <label className="flex flex-col gap-1.5 text-sm text-neutral-700">
+                        Company size
+                        <Select
+                          placeholder="Select size"
+                          name="companySize"
+                          options={[
+                            { value: "1-10", label: "1-10" },
+                            { value: "11-50", label: "11-50" },
+                            { value: "51-200", label: "51-200" },
+                            { value: "201-500", label: "201-500" },
+                            { value: "500+", label: "500+" },
+                          ]}
+                        />
+                      </label>
+                      <label className="flex flex-col gap-1.5 text-sm text-neutral-700">
+                        Your role (optional)
+                        <Input placeholder="eg. Engineering lead" name="role" />
+                      </label>
+                      <label className="flex flex-col gap-1.5 text-sm text-neutral-700 sm:col-span-2">
+                        How are you using OpenClaw today? (optional short text)
+                        <Textarea
+                          placeholder="Share your use case, infra needs, or rollout plans."
+                          name="usage"
+                        />
+                      </label>
+                      {submitError ? (
+                        <p className="sm:col-span-2 text-sm text-neutral-500">
+                          {submitError}
+                        </p>
+                      ) : null}
+                      <div className="sm:col-span-2 flex justify-end">
+                        <Button size="sm" type="submit" disabled={isSubmitting}>
+                          {isSubmitting ? "Submitting..." : "Request access"}
+                        </Button>
+                      </div>
+                    </form>
+                  )}
+                </DialogContent>
+              </DialogRoot>
             </div>
           </div>
 

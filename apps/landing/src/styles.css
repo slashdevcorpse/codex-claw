@@ -5,6 +5,10 @@ body {
   margin: 0;
 }
 
+.root {
+  isolation: isolate;
+}
+
 html,
 body {
   @apply m-0 font-sans;
