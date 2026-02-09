@@ -1,4 +1,16 @@
+import { Button } from "@/components/ui/button";
 import { CodeBlock, CodeBlockCode } from "@/components/ui/code-block";
+import {
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogRoot,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 
 export function App() {
   return (
@@ -45,6 +57,71 @@ export function App() {
                   ></path>
                 </svg>
               </a>
+              <DialogRoot>
+                <DialogTrigger
+                  render={(props) => (
+                    <Button variant="secondary" {...props}>
+                      Request workspace access
+                    </Button>
+                  )}
+                />
+                <DialogContent>
+                  <DialogTitle>For teams</DialogTitle>
+                  <DialogDescription className="mt-2">
+                    Tell us about your team and we will help you set up WebClaw
+                    at scale.
+                  </DialogDescription>
+                  <DialogClose aria-label="Close">
+                    <svg
+                      viewBox="0 0 20 20"
+                      aria-hidden="true"
+                      className="size-4"
+                      fill="none"
+                    >
+                      <path
+                        d="M5 5l10 10M15 5L5 15"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                  </DialogClose>
+                  <form className="mt-6 grid gap-4 sm:grid-cols-2">
+                    <label className="flex flex-col gap-2 text-sm text-neutral-700">
+                      Name
+                      <Input placeholder="Alex Doe" />
+                    </label>
+                    <label className="flex flex-col gap-2 text-sm text-neutral-700">
+                      Work email
+                      <Input placeholder="eliud@company.com" type="email" />
+                    </label>
+                    <label className="flex flex-col gap-2 text-sm text-neutral-700">
+                      Company
+                      <Input placeholder="Company name" />
+                    </label>
+                    <label className="flex flex-col gap-2 text-sm text-neutral-700">
+                      Team size
+                      <Select
+                        placeholder="Select size"
+                        options={[
+                          { value: "1-10", label: "1-10" },
+                          { value: "11-50", label: "11-50" },
+                          { value: "51-200", label: "51-200" },
+                          { value: "201-500", label: "201-500" },
+                          { value: "500+", label: "500+" },
+                        ]}
+                      />
+                    </label>
+                    <label className="flex flex-col gap-2 text-sm text-neutral-700 sm:col-span-2">
+                      What do you want to build?
+                      <Textarea placeholder="Share your use case, infra needs, or rollout plans." />
+                    </label>
+                    <div className="sm:col-span-2 flex justify-end">
+                      <Button>Request access</Button>
+                    </div>
+                  </form>
+                </DialogContent>
+              </DialogRoot>
             </div>
           </div>
 
