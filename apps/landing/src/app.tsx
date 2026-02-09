@@ -1,6 +1,5 @@
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
-import type { FormEvent } from "react";
 import { CodeBlock, CodeBlockCode } from "@/components/ui/code-block";
 import {
   DialogClose,
@@ -19,19 +18,17 @@ export function App() {
   const [hasSubmitted, setHasSubmitted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [submittedAt, setSubmittedAt] = useState(() => String(Date.now()));
 
   function handleDialogOpenChange(nextOpen: boolean) {
     setIsDialogOpen(nextOpen);
     if (!nextOpen) {
       setHasSubmitted(false);
-      setSubmitError(null);
-    } else {
-      setSubmittedAt(String(Date.now()));
     }
   }
 
-  async function handleWorkspaceSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleWorkspaceSubmit(
+    event: React.FormEvent<HTMLFormElement>
+  ) {
     event.preventDefault();
     if (isSubmitting) {
       return;
@@ -45,8 +42,6 @@ export function App() {
       companySize: String(formData.get("companySize") ?? ""),
       role: String(formData.get("role") ?? ""),
       usage: String(formData.get("usage") ?? ""),
-      website: String(formData.get("website") ?? ""),
-      submittedAt: String(formData.get("submittedAt") ?? ""),
     };
 
     setIsSubmitting(true);
@@ -189,16 +184,8 @@ export function App() {
                       className="mt-6 grid gap-4 sm:grid-cols-2"
                       onSubmit={handleWorkspaceSubmit}
                     >
-                      <input
-                        autoComplete="off"
-                        className="hidden"
-                        name="website"
-                        tabIndex={-1}
-                        type="text"
-                      />
-                      <input name="submittedAt" type="hidden" value={submittedAt} />
                       <label className="flex flex-col gap-1.5 text-sm text-neutral-700">
-                        Work email (required)
+                        Work email
                         <Input
                           placeholder="alex@company.com"
                           type="email"
@@ -207,8 +194,8 @@ export function App() {
                         />
                       </label>
                       <label className="flex flex-col gap-1.5 text-sm text-neutral-700">
-                        Company / team name (optional)
-                        <Input placeholder="Company or team" name="companyName" />
+                        Company name
+                        <Input placeholder="OpenClaw" name="companyName" />
                       </label>
                       <label className="flex flex-col gap-1.5 text-sm text-neutral-700">
                         Company size
@@ -225,11 +212,11 @@ export function App() {
                         />
                       </label>
                       <label className="flex flex-col gap-1.5 text-sm text-neutral-700">
-                        Your role (optional)
+                        Your role
                         <Input placeholder="eg. Engineering lead" name="role" />
                       </label>
                       <label className="flex flex-col gap-1.5 text-sm text-neutral-700 sm:col-span-2">
-                        How are you using OpenClaw today? (optional short text)
+                        How are you using OpenClaw today?
                         <Textarea
                           placeholder="Share your use case, infra needs, or rollout plans."
                           name="usage"
