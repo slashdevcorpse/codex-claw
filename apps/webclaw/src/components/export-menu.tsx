@@ -1,10 +1,16 @@
 'use client'
 
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { HugeiconsIcon } from '@hugeicons/react'
-import { Download04Icon } from '@hugeicons/core-free-icons'
+import { Download01Icon } from '@hugeicons/core-free-icons'
 
-import { Button } from '@/components/ui/button'
+import {
+  MenuContent,
+  MenuItem,
+  MenuRoot,
+  MenuTrigger,
+} from '@/components/ui/menu'
+import { buttonVariants } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
 type ExportFormat = 'markdown' | 'json' | 'text'
@@ -22,77 +28,46 @@ const formats: Array<{ format: ExportFormat; label: string; ext: string }> = [
 
 export function ExportMenu({ onExport, disabled }: ExportMenuProps) {
   const [open, setOpen] = useState(false)
-  const containerRef = useRef<HTMLDivElement | null>(null)
-
-  const handleToggle = useCallback(function handleToggle() {
-    setOpen(function toggle(prev) {
-      return !prev
-    })
-  }, [])
-
-  const handleExport = useCallback(
-    function handleExport(format: ExportFormat) {
-      setOpen(false)
-      onExport(format)
+  const handleOpenChange = useCallback(
+    function handleOpenChange(nextOpen: boolean) {
+      if (disabled) return
+      setOpen(nextOpen)
     },
-    [onExport],
+    [disabled],
   )
 
-  const handleBlur = useCallback(function handleBlur(
-    event: React.FocusEvent,
-  ) {
-    if (
-      containerRef.current &&
-      !containerRef.current.contains(event.relatedTarget as Node)
-    ) {
-      setOpen(false)
-    }
-  }, [])
-
   return (
-    <div ref={containerRef} className="relative" onBlur={handleBlur}>
-      <Button
-        size="icon-sm"
-        variant="ghost"
-        onClick={handleToggle}
-        disabled={disabled}
-        className="text-primary-800 hover:bg-primary-100"
-        aria-label="Export conversation"
-        title="Export conversation"
+    <MenuRoot open={disabled ? false : open} onOpenChange={handleOpenChange}>
+      <MenuTrigger
+        type="button"
+        className={cn(
+          buttonVariants({ size: 'icon-sm', variant: 'ghost' }),
+          'text-primary-800 hover:bg-primary-100',
+        )}
+        aria-label="Download conversation"
+        title="Download conversation"
+        aria-disabled={disabled ? true : undefined}
       >
-        <HugeiconsIcon icon={Download04Icon} size={18} strokeWidth={1.5} />
-      </Button>
-
-      {open && (
-        <div
-          className={cn(
-            'absolute right-0 top-full mt-1 z-50',
-            'min-w-[160px] rounded-lg border border-primary-200',
-            'bg-surface py-1 shadow-lg',
-          )}
-          role="menu"
-        >
-          {formats.map(function renderFormat({ format, label, ext }) {
-            return (
-              <button
-                key={format}
-                role="menuitem"
-                className={cn(
-                  'flex w-full items-center justify-between px-3 py-1.5',
-                  'text-sm text-primary-800 hover:bg-primary-100',
-                  'transition-colors',
-                )}
-                onClick={function onClick() {
-                  handleExport(format)
-                }}
-              >
-                <span>{label}</span>
-                <span className="text-xs text-primary-500">{ext}</span>
-              </button>
-            )
-          })}
-        </div>
-      )}
-    </div>
+        <HugeiconsIcon icon={Download01Icon} size={20} strokeWidth={1.5} />
+      </MenuTrigger>
+      <MenuContent side="bottom" align="end">
+        {formats.map(function renderFormat({ format, label, ext }) {
+          return (
+            <MenuItem
+              key={format}
+              onClick={function onClick() {
+                onExport(format)
+              }}
+              className="justify-between"
+            >
+              <span>{label}</span>
+              <span className="text-xs text-primary-600 tabular-nums">
+                {ext}
+              </span>
+            </MenuItem>
+          )
+        })}
+      </MenuContent>
+    </MenuRoot>
   )
 }

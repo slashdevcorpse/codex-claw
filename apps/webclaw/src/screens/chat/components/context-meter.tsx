@@ -4,6 +4,8 @@ import {
   PreviewCardPopup,
   PreviewCardTrigger,
 } from '@/components/ui/preview-card'
+import { buttonVariants } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 
 type ContextMeterProps = {
   usedTokens?: number
@@ -12,7 +14,11 @@ type ContextMeterProps = {
 
 function ContextMeterComponent({ usedTokens, maxTokens }: ContextMeterProps) {
   const { percentage, usedLabel, leftPercentage } = useMemo(() => {
-    if (!usedTokens || !maxTokens)
+    if (
+      typeof usedTokens !== 'number' ||
+      typeof maxTokens !== 'number' ||
+      maxTokens <= 0
+    )
       return {
         percentage: 0,
         usedLabel: '',
@@ -28,11 +34,16 @@ function ContextMeterComponent({ usedTokens, maxTokens }: ContextMeterProps) {
     }
   }, [usedTokens, maxTokens])
 
-  if (!usedTokens || !maxTokens || percentage === 0) return null
+  if (usedLabel.length === 0) return null
 
   return (
     <PreviewCard>
-      <PreviewCardTrigger className="flex items-center gap-2 text-xs text-primary-500">
+      <PreviewCardTrigger
+        className={cn(
+          buttonVariants({ size: 'icon-sm', variant: 'ghost' }),
+          'text-primary-800 hover:bg-primary-100',
+        )}
+      >
         <div className="size-4 text-primary-200">
           <svg
             viewBox="0 0 36 36"

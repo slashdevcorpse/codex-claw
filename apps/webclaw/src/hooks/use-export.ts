@@ -2,7 +2,7 @@ import { useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 
 import { chatQueryKeys } from '../screens/chat/chat-queries'
-import { textFromMessage, getMessageTimestamp } from '../screens/chat/utils'
+import { getMessageTimestamp, textFromMessage } from '../screens/chat/utils'
 import type { GatewayMessage, HistoryResponse } from '../screens/chat/types'
 
 type ExportFormat = 'markdown' | 'json' | 'text'
@@ -26,10 +26,10 @@ export function useExport({
         currentFriendlyId,
         currentSessionKey || currentFriendlyId,
       )
-      const cached = queryClient.getQueryData(historyKey) as
-        | HistoryResponse
-        | undefined
-      const messages = Array.isArray(cached?.messages) ? cached.messages : []
+      const cached = queryClient.getQueryData<HistoryResponse>(historyKey)
+      const messages = Array.isArray(cached?.messages)
+        ? cached.messages
+        : []
 
       if (messages.length === 0) return
 
@@ -156,12 +156,13 @@ function toPlainText(messages: Array<GatewayMessage>, title: string): string {
 }
 
 function sanitizeFilename(name: string): string {
-  return name
-    .replace(/[^a-zA-Z0-9 _-]/g, '')
-    .replace(/\s+/g, '-')
-    .slice(0, 60)
-    .toLowerCase()
-    || 'conversation'
+  return (
+    name
+      .replace(/[^a-zA-Z0-9 _-]/g, '')
+      .replace(/\s+/g, '-')
+      .slice(0, 60)
+      .toLowerCase() || 'conversation'
+  )
 }
 
 function downloadFile(

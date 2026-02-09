@@ -17,8 +17,8 @@ import {
 } from './utils'
 import { createOptimisticMessage } from './chat-screen-utils'
 import {
-  chatQueryKeys,
   appendHistoryMessage,
+  chatQueryKeys,
   clearHistoryMessages,
   fetchGatewayStatus,
   removeHistoryMessageByClientId,
@@ -28,10 +28,8 @@ import {
 import { chatUiQueryKey, getChatUiState, setChatUiState } from './chat-ui'
 import { ChatSidebar } from './components/chat-sidebar'
 import { ChatHeader } from './components/chat-header'
-import { useExport } from '@/hooks/use-export'
 import { ChatMessageList } from './components/chat-message-list'
 import { ChatComposer } from './components/chat-composer'
-import type { AttachmentFile } from '@/components/attachment-button'
 import { GatewayStatusMessage } from './components/gateway-status-message'
 import {
   consumePendingSend,
@@ -39,16 +37,18 @@ import {
   hasPendingSend,
   isRecentSession,
   resetPendingSend,
-  setRecentSession,
   setPendingGeneration,
+  setRecentSession,
   stashPendingSend,
 } from './pending-send'
 import { useChatMeasurements } from './hooks/use-chat-measurements'
 import { useChatHistory } from './hooks/use-chat-history'
 import { useChatMobile } from './hooks/use-chat-mobile'
 import { useChatSessions } from './hooks/use-chat-sessions'
+import type { AttachmentFile } from '@/components/attachment-button'
 import type { ChatComposerHelpers } from './components/chat-composer'
 import type { HistoryResponse } from './types'
+import { useExport } from '@/hooks/use-export'
 import { cn } from '@/lib/utils'
 
 type ChatScreenProps = {
@@ -90,6 +90,7 @@ export function ChatScreen({
   const {
     sessionsQuery,
     sessions,
+    activeSession,
     activeExists,
     activeSessionKey,
     activeTitle,
@@ -149,7 +150,7 @@ export function ChatScreen({
   const handleGatewayRefetch = useCallback(() => {
     void gatewayStatusQuery.refetch()
   }, [gatewayStatusQuery])
-  const isSidebarCollapsed = uiQuery.data?.isSidebarCollapsed ?? false
+  const isSidebarCollapsed = uiQuery.data.isSidebarCollapsed
   const handleActiveSessionDelete = useCallback(() => {
     setError(null)
     setIsRedirecting(true)
@@ -267,8 +268,9 @@ export function ChatScreen({
   const hideUi = shouldRedirectToNew || isRedirecting
 
   useEffect(() => {
+    if (historyMessages.length === 0) return
     const latestMessage = historyMessages[historyMessages.length - 1]
-    if (!latestMessage || latestMessage.role !== 'assistant') return
+    if (latestMessage.role !== 'assistant') return
     const signature = `${historyMessages.length}:${textFromMessage(latestMessage).slice(-64)}`
     if (signature !== lastAssistantSignature.current) {
       lastAssistantSignature.current = signature
@@ -282,8 +284,6 @@ export function ChatScreen({
   }, [historyMessages, streamFinish])
 
   useEffect(() => {
-    const resetKey = isNewChat ? 'new' : activeFriendlyId
-    if (!resetKey) return
     if (pendingStartRef.current) {
       pendingStartRef.current = false
       return
@@ -311,9 +311,7 @@ export function ChatScreen({
       pending.friendlyId,
       pending.sessionKey,
     )
-    const cached = queryClient.getQueryData(historyKey) as
-      | HistoryResponse
-      | undefined
+    const cached = queryClient.getQueryData<HistoryResponse>(historyKey)
     const cachedMessages = Array.isArray(cached?.messages)
       ? cached.messages
       : []
@@ -339,7 +337,13 @@ export function ChatScreen({
     }
     setWaitingForResponse(true)
     setPinToTop(true)
-    sendMessage(pending.sessionKey, pending.friendlyId, pending.message, true, pending.attachments)
+    sendMessage(
+      pending.sessionKey,
+      pending.friendlyId,
+      pending.message,
+      true,
+      pending.attachments,
+    )
   }, [
     activeFriendlyId,
     activeSessionKey,
@@ -354,11 +358,14 @@ export function ChatScreen({
     friendlyId: string,
     body: string,
     skipOptimistic = false,
-    attachments?: AttachmentFile[],
+    attachments?: Array<AttachmentFile>,
   ) {
     let optimisticClientId = ''
     if (!skipOptimistic) {
-      const { clientId, optimisticMessage } = createOptimisticMessage(body, attachments)
+      const { clientId, optimisticMessage } = createOptimisticMessage(
+        body,
+        attachments,
+      )
       optimisticClientId = clientId
       appendHistoryMessage(
         queryClient,
@@ -464,7 +471,8 @@ export function ChatScreen({
   const send = useCallback(
     (body: string, helpers: ChatComposerHelpers) => {
       const attachments = helpers.attachments
-      if (body.length === 0 && (!attachments || attachments.length === 0)) return
+      if (body.length === 0 && (!attachments || attachments.length === 0))
+        return
       helpers.reset()
 
       if (isNewChat) {
@@ -564,8 +572,7 @@ export function ChatScreen({
     })
   }, [queryClient])
 
-  const historyLoading =
-    (historyQuery.isLoading && !historyQuery.data) || isRedirecting
+  const historyLoading = historyQuery.isLoading || isRedirecting
   const showGatewayDown = Boolean(gatewayStatusError)
   const showGatewayNotice =
     showGatewayDown &&
@@ -626,7 +633,9 @@ export function ChatScreen({
             showSidebarButton={isMobile}
             onOpenSidebar={handleOpenSidebar}
             onExport={exportConversation}
-            hasMessages={displayMessages.length > 0}
+            exportDisabled={historyLoading || displayMessages.length === 0}
+            usedTokens={activeSession?.totalTokens}
+            maxTokens={activeSession?.contextTokens}
           />
 
           {hideUi ? null : (
