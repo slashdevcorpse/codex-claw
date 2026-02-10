@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useMemo } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { ArrowDown01Icon, ArrowUp01Icon } from '@hugeicons/core-free-icons'
 import {
@@ -8,7 +8,6 @@ import {
   CommandCollection,
   CommandDialog,
   CommandDialogPopup,
-  CommandEmpty,
   CommandFooter,
   CommandGroup,
   CommandGroupLabel,
@@ -18,6 +17,7 @@ import {
   CommandPanel,
   CommandSeparator,
 } from '@/components/ui/command'
+import { useAutocompleteFilter } from '@/components/ui/autocomplete'
 
 type CommandSession = {
   key: string
@@ -58,6 +58,9 @@ function CommandSessionDialog({
   onOpenChange,
   onSelect,
 }: CommandSessionProps) {
+  const [value, setValue] = useState('')
+  const filter = useAutocompleteFilter({ sensitivity: 'base' })
+
   const groupedItems = useMemo<Array<CommandSessionGroup>>(() => {
     return [
       {
@@ -72,39 +75,65 @@ function CommandSessionDialog({
     ]
   }, [sessions])
 
+  const filteredGroups = useMemo(() => {
+    const query = value.trim()
+    if (!query) return groupedItems
+
+    return groupedItems
+      .map((group) => ({
+        ...group,
+        items: group.items.filter((item) =>
+          filter.contains(item, query, (target) => target.label),
+        ),
+      }))
+      .filter((group) => group.items.length > 0)
+  }, [filter, groupedItems, value])
+
+  const isEmpty = filteredGroups.length === 0
+
   return (
     <CommandDialog open={open} onOpenChange={onOpenChange}>
-      <CommandDialogPopup>
-        <Command items={groupedItems}>
+      <CommandDialogPopup className="mx-auto self-center">
+        <Command
+          items={groupedItems}
+          value={value}
+          onValueChange={setValue}
+          mode="none"
+        >
           <CommandInput placeholder="Search sessions" />
           <CommandPanel className="flex min-h-0 flex-1 flex-col">
-            <CommandEmpty>No sessions found.</CommandEmpty>
-            <CommandList className="max-h-72 min-h-0">
-              {(group: CommandSessionGroup, index: number) => (
-                <Fragment key={`${group.value}-${index}`}>
-                  <CommandGroup items={group.items}>
-                    <CommandGroupLabel>{group.value}</CommandGroupLabel>
-                    <CommandCollection>
-                      {(item: CommandSessionItem) => (
-                        <CommandItem
-                          key={item.value}
-                          value={item.label}
-                          onClick={() => onSelect(item.session)}
-                          className="gap-2"
-                        >
-                          <span className="text-sm font-[450] line-clamp-1">
-                            {item.label}
-                          </span>
-                        </CommandItem>
-                      )}
-                    </CommandCollection>
-                  </CommandGroup>
-                  {index < groupedItems.length - 1 ? (
-                    <CommandSeparator />
-                  ) : null}
-                </Fragment>
-              )}
-            </CommandList>
+            {isEmpty ? (
+              <div className="h-72 min-h-0 flex items-center justify-center text-sm text-primary-600">
+                No sessions found.
+              </div>
+            ) : (
+              <CommandList className="h-72 min-h-0">
+                {filteredGroups.map((group, index) => (
+                  <Fragment key={`${group.value}-${index}`}>
+                    <CommandGroup items={group.items}>
+                      <CommandGroupLabel>{group.value}</CommandGroupLabel>
+                      <CommandCollection>
+                        {(item) => (
+                          <CommandItem
+                            key={item.value}
+                            value={item.label}
+                            onClick={() => onSelect(item.session)}
+                            className="gap-2"
+                          >
+                            <span className="text-sm font-[450] line-clamp-1">
+                              {item.label}
+                            </span>
+                          </CommandItem>
+                        )}
+                      </CommandCollection>
+                    </CommandGroup>
+                    {index < filteredGroups.length - 1 ? (
+                      <CommandSeparator />
+                    ) : null}
+                  </Fragment>
+                ))}
+              </CommandList>
+            )}
           </CommandPanel>
           <CommandFooter>
             <div className="flex items-center gap-4 text-primary-700">
