@@ -267,7 +267,7 @@ export function App() {
         style={{ pointerEvents: "auto" }}
       >
         <span>
-          <span>©2026</span>{" "}
+          <span>©{new Date().getFullYear()}</span>{" "}
           <a
             href="https://interfaceoffice.com"
             target="_blank"

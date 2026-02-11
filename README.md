@@ -8,7 +8,13 @@ Fast web client for OpenClaw.
 
 Currently in beta.
 
-## Setup
+## Installation
+
+```bash
+curl -fsSL https://webclaw.dev/install | bash
+```
+
+## Other option
 
 Create `apps/webclaw/.env.local` with `CLAWDBOT_GATEWAY_URL` and either
 `CLAWDBOT_GATEWAY_TOKEN` (recommended) or `CLAWDBOT_GATEWAY_PASSWORD`. These map
