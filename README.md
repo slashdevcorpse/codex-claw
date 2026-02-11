@@ -19,3 +19,11 @@ Default URL is `ws://127.0.0.1:18789`. Docs: https://docs.openclaw.ai/gateway
 pnpm install
 pnpm dev
 ```
+
+## Contributing
+
+Please read the [contributing guide](CONTRIBUTING.md).
+
+## License
+
+See [LICENSE](LICENSE).
