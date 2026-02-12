@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react'
 
-import { getMessageTimestamp, textFromMessage } from '../utils'
+import { getMessageTimestamp } from '../utils'
 import {
   chatQueryKeys,
   updateHistoryMessages,
@@ -126,9 +126,9 @@ export function useChatStream({
               }
 
               if (streamRunId && state === 'delta') {
-                const deltaText = textFromMessage(nextMessage)
+                const deltaText = rawTextFromMessage(nextMessage)
                 const previousText = streamRunTextRef.current.get(streamRunId) ?? ''
-                const cumulativeText = `${previousText}${deltaText}`
+                const cumulativeText = mergeDeltaText(previousText, deltaText)
                 if (cumulativeText.length > 0) {
                   streamRunTextRef.current.set(streamRunId, cumulativeText)
                   nextMessage = {
@@ -139,7 +139,7 @@ export function useChatStream({
               }
 
               if (streamRunId && state === 'final') {
-                const finalText = textFromMessage(nextMessage)
+                const finalText = rawTextFromMessage(nextMessage)
                 if (!finalText) {
                   const bufferedText = streamRunTextRef.current.get(streamRunId)
                   if (bufferedText) {
@@ -280,4 +280,19 @@ export function useChatStream({
   ])
 
   return { stopStream }
+}
+
+function rawTextFromMessage(message: GatewayMessage): string {
+  const parts = Array.isArray(message.content) ? message.content : []
+  return parts
+    .map((part) => (part.type === 'text' ? String(part.text ?? '') : ''))
+    .join('')
+}
+
+function mergeDeltaText(previousText: string, nextText: string): string {
+  if (!previousText) return nextText
+  if (!nextText) return previousText
+  if (nextText.startsWith(previousText)) return nextText
+  if (previousText.endsWith(nextText)) return previousText
+  return `${previousText}${nextText}`
 }
