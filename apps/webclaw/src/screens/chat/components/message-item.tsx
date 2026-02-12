@@ -146,16 +146,18 @@ type ImagePart = {
  * @param msg - The gateway message to extract images from
  * @returns Array of image parts with base64 data
  */
-function imagesFromMessage(msg: GatewayMessage): ImagePart[] {
+function imagesFromMessage(msg: GatewayMessage): Array<ImagePart> {
   const parts = Array.isArray(msg.content) ? msg.content : []
-  const images: ImagePart[] = []
+  const images: Array<ImagePart> = []
   for (const part of parts) {
+    const partType = (part as { type?: string }).type
+    const imagePart = part as unknown as ImagePart
     if (
-      part.type === 'image' &&
+      partType === 'image' &&
       'source' in part &&
-      typeof (part as ImagePart).source?.data === 'string'
+      typeof imagePart.source.data === 'string'
     ) {
-      images.push(part as ImagePart)
+      images.push(imagePart)
     }
   }
   return images

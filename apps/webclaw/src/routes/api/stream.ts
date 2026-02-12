@@ -68,7 +68,8 @@ export const Route = createFileRoute('/api/stream')({
                 })
                 .catch((error: unknown) => {
                   if (closed) return
-                  const message = error instanceof Error ? error.message : String(error)
+                  const message =
+                    error instanceof Error ? error.message : String(error)
                   send({ event: 'error', payload: message })
                 })
             }

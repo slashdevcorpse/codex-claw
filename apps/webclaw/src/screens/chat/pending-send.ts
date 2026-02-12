@@ -6,7 +6,7 @@ export type PendingSendPayload = {
   friendlyId: string
   message: string
   optimisticMessage: GatewayMessage
-  attachments?: AttachmentFile[]
+  attachments?: Array<AttachmentFile>
 }
 
 let pendingSend: PendingSendPayload | null = null

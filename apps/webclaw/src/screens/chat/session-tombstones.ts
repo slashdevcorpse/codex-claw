@@ -21,7 +21,6 @@ export function filterSessionsWithTombstones<
 >(sessions: Array<T>) {
   if (tombstones.size === 0) return sessions
   const now = Date.now()
-  let changed = false
   const next = sessions.filter((session) => {
     const keyTombstone = tombstones.get(session.key)
     const friendlyTombstone = tombstones.get(session.friendlyId)
@@ -37,11 +36,8 @@ export function filterSessionsWithTombstones<
       }
       return true
     }
-    if (keyTombstone || friendlyTombstone) {
-      changed = true
-      return false
-    }
+    if (keyTombstone || friendlyTombstone) return false
     return true
   })
-  return changed ? next : sessions
+  return next
 }

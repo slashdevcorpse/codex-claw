@@ -1,8 +1,9 @@
 import { useMemo, useRef } from 'react'
-import { useQuery, type QueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 
 import { chatQueryKeys, fetchHistory } from '../chat-queries'
 import { getMessageTimestamp, textFromMessage } from '../utils'
+import type { QueryClient } from '@tanstack/react-query'
 import type { GatewayMessage, HistoryResponse } from '../types'
 
 type UseChatHistoryInput = {
@@ -35,9 +36,7 @@ export function useChatHistory({
   const historyQuery = useQuery({
     queryKey: historyKey,
     queryFn: async function fetchHistoryForSession() {
-      const cached = queryClient.getQueryData(historyKey) as
-        | HistoryResponse
-        | undefined
+      const cached = queryClient.getQueryData<HistoryResponse>(historyKey)
       const optimisticMessages = Array.isArray(cached?.messages)
         ? cached.messages.filter((message) => {
             if (message.status === 'sending') return true
@@ -79,12 +78,11 @@ export function useChatHistory({
     const messages = Array.isArray(historyQuery.data?.messages)
       ? historyQuery.data.messages
       : []
-    const last = messages[messages.length - 1]
-    const lastId =
-      last && typeof (last as { id?: string }).id === 'string'
-        ? (last as { id?: string }).id
-        : ''
-    const signature = `${messages.length}:${last?.role ?? ''}:${lastId}:${textFromMessage(last ?? { role: 'user', content: [] }).slice(-32)}`
+    const last = messages.at(-1)
+    const lastId = typeof last?.id === 'string' ? last.id : ''
+    const lastRole = typeof last?.role === 'string' ? last.role : ''
+    const lastText = last ? textFromMessage(last) : ''
+    const signature = `${messages.length}:${lastRole}:${lastId}:${lastText.slice(-32)}`
     if (signature === stableHistorySignatureRef.current) {
       return stableHistoryMessagesRef.current
     }

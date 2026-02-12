@@ -9,7 +9,7 @@ type OptimisticMessagePayload = {
 
 export function createOptimisticMessage(
   body: string,
-  attachments?: AttachmentFile[],
+  attachments?: Array<AttachmentFile>,
 ): OptimisticMessagePayload {
   const clientId = crypto.randomUUID()
   const optimisticId = `opt-${clientId}`
@@ -23,7 +23,7 @@ export function createOptimisticMessage(
 
   if (attachments && attachments.length > 0) {
     for (const att of attachments) {
-      if (att.type === 'image' && att.base64) {
+      if (att.base64) {
         content.push({
           type: 'image',
           source: {

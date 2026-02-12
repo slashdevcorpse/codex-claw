@@ -23,8 +23,8 @@ import {
   clearHistoryMessages,
   fetchGatewayStatus,
   removeHistoryMessageByClientId,
-  updateHistoryMessages,
   updateHistoryMessageByClientId,
+  updateHistoryMessages,
   updateSessionLastMessage,
 } from './chat-queries'
 import { chatUiQueryKey, getChatUiState, setChatUiState } from './chat-ui'

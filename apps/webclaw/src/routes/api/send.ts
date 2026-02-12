@@ -73,16 +73,16 @@ export const Route = createFileRoute('/api/send')({
           const res = await gatewayRpcShared<{ runId: string }>(
             'chat.send',
             {
-            sessionKey,
-            message,
-            thinking,
-            attachments,
-            deliver: true,
-            timeoutMs: 120_000,
-            idempotencyKey:
-              typeof body.idempotencyKey === 'string'
-                ? body.idempotencyKey
-                : randomUUID(),
+              sessionKey,
+              message,
+              thinking,
+              attachments,
+              deliver: true,
+              timeoutMs: 120_000,
+              idempotencyKey:
+                typeof body.idempotencyKey === 'string'
+                  ? body.idempotencyKey
+                  : randomUUID(),
             },
             sessionKey,
           )
