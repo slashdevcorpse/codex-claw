@@ -103,15 +103,29 @@ body {
   white-space: nowrap;
 }
 
+.code-block {
+  max-width: 100%;
+  min-width: 0;
+}
+
+.code-block pre,
 .code-block .shiki {
   background: transparent !important;
   margin: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  min-width: 0;
+  width: 100%;
 }
 
+.code-block pre code,
 .code-block .shiki code {
   display: block;
   font-size: 0.875rem;
   line-height: 1.5;
+  min-width: 0;
+  max-width: 100%;
+  width: 0;
 }
 
 code {

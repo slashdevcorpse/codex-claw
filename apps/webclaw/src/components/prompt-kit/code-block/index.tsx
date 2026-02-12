@@ -149,7 +149,7 @@ export function CodeBlock({
   return (
     <div
       className={cn(
-        'group relative min-w-0 overflow-hidden rounded-lg border border-primary-200',
+        'code-block group relative w-full max-w-full min-w-0 overflow-hidden rounded-lg border border-primary-200',
         className,
       )}
     >
@@ -179,7 +179,7 @@ export function CodeBlock({
       {html ? (
         <div
           className={cn(
-            'text-sm text-primary-900 [&>pre]:overflow-x-auto',
+            'text-sm text-primary-900 [&>pre]:w-full [&>pre]:max-w-full [&>pre]:overflow-x-auto',
             isSingleLine
               ? '[&>pre]:whitespace-pre [&>pre]:px-3 [&>pre]:py-2'
               : '[&>pre]:px-3 [&>pre]:py-3',
@@ -189,11 +189,11 @@ export function CodeBlock({
       ) : (
         <pre
           className={cn(
-            'text-sm',
+            'text-sm max-w-full overflow-x-auto',
             isSingleLine ? 'whitespace-pre px-3 py-2' : 'px-3 py-3',
           )}
         >
-          <code className="overflow-x-auto">{fallback}</code>
+          <code className="block min-w-full">{fallback}</code>
         </pre>
       )}
     </div>
