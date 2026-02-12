@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { createFileRoute } from '@tanstack/react-router'
 import { json } from '@tanstack/react-start'
-import { gatewayRpc } from '../../server/gateway'
+import { gatewayRpc, gatewayRpcShared } from '../../server/gateway'
 
 type SessionsResolveResponse = {
   ok?: boolean
@@ -70,18 +70,22 @@ export const Route = createFileRoute('/api/send')({
             sessionKey = 'main'
           }
 
-          const res = await gatewayRpc<{ runId: string }>('chat.send', {
+          const res = await gatewayRpcShared<{ runId: string }>(
+            'chat.send',
+            {
             sessionKey,
             message,
             thinking,
             attachments,
-            deliver: false,
+            deliver: true,
             timeoutMs: 120_000,
             idempotencyKey:
               typeof body.idempotencyKey === 'string'
                 ? body.idempotencyKey
                 : randomUUID(),
-          })
+            },
+            sessionKey,
+          )
 
           return json({ ok: true, ...res, sessionKey })
         } catch (err) {

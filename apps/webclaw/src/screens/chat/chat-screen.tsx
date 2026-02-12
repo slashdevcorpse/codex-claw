@@ -11,6 +11,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import {
   deriveFriendlyIdFromKey,
+  getMessageTimestamp,
   isMissingGatewayAuth,
   readError,
   textFromMessage,
@@ -22,6 +23,7 @@ import {
   clearHistoryMessages,
   fetchGatewayStatus,
   removeHistoryMessageByClientId,
+  updateHistoryMessages,
   updateHistoryMessageByClientId,
   updateSessionLastMessage,
 } from './chat-queries'
@@ -47,7 +49,7 @@ import { useChatMobile } from './hooks/use-chat-mobile'
 import { useChatSessions } from './hooks/use-chat-sessions'
 import type { AttachmentFile } from '@/components/attachment-button'
 import type { ChatComposerHelpers } from './components/chat-composer'
-import type { HistoryResponse } from './types'
+import type { GatewayMessage, HistoryResponse } from './types'
 import { useExport } from '@/hooks/use-export'
 import { cn } from '@/lib/utils'
 
@@ -81,8 +83,15 @@ export function ChatScreen({
   const [pinToTop, setPinToTop] = useState(
     () => hasPendingSend() || hasPendingGeneration(),
   )
-  const streamTimer = useRef<number | null>(null)
   const streamIdleTimer = useRef<number | null>(null)
+  const streamRefetchInFlight = useRef(false)
+  const lastStreamStateVersion = useRef<number | null>(null)
+  const lastStreamSeq = useRef<number | null>(null)
+  const streamSourceRef = useRef<EventSource | null>(null)
+  const streamReconnectTimer = useRef<number | null>(null)
+  const streamReconnectAttempt = useRef(0)
+  const streamFinalRefetchTimer = useRef<number | null>(null)
+  const lastStreamFinalRunId = useRef('')
   const lastAssistantSignature = useRef('')
   const refreshHistoryRef = useRef<() => void>(() => {})
   const pendingStartRef = useRef(false)
@@ -157,31 +166,241 @@ export function ChatScreen({
     navigate({ to: '/new', replace: true })
   }, [navigate])
   const streamStop = useCallback(() => {
-    if (streamTimer.current) {
-      window.clearInterval(streamTimer.current)
-      streamTimer.current = null
-    }
     if (streamIdleTimer.current) {
       window.clearTimeout(streamIdleTimer.current)
       streamIdleTimer.current = null
     }
+    if (streamReconnectTimer.current) {
+      window.clearTimeout(streamReconnectTimer.current)
+      streamReconnectTimer.current = null
+    }
+    if (streamFinalRefetchTimer.current) {
+      window.clearTimeout(streamFinalRefetchTimer.current)
+      streamFinalRefetchTimer.current = null
+    }
+    if (streamSourceRef.current) {
+      streamSourceRef.current.close()
+      streamSourceRef.current = null
+    }
+    streamRefetchInFlight.current = false
   }, [])
   const streamFinish = useCallback(() => {
     streamStop()
     setPendingGeneration(false)
     setWaitingForResponse(false)
   }, [streamStop])
-  const streamStart = useCallback(() => {
-    if (!activeFriendlyId || isNewChat) return
-    if (streamTimer.current) window.clearInterval(streamTimer.current)
-    streamTimer.current = window.setInterval(() => {
-      refreshHistoryRef.current()
-    }, 350)
-  }, [activeFriendlyId, isNewChat])
   const stableContentStyle = useMemo<React.CSSProperties>(() => ({}), [])
   refreshHistoryRef.current = function refreshHistory() {
     void historyQuery.refetch()
   }
+
+  useEffect(function setupStream() {
+    if (!activeFriendlyId || isNewChat || isRedirecting) return
+    let cancelled = false
+
+    function startStream() {
+      if (cancelled) return
+      if (streamSourceRef.current) {
+        streamSourceRef.current.close()
+        streamSourceRef.current = null
+      }
+      const params = new URLSearchParams()
+      const streamSessionKey = resolvedSessionKey || sessionKeyForHistory
+      if (streamSessionKey) params.set('sessionKey', streamSessionKey)
+      if (activeFriendlyId) params.set('friendlyId', activeFriendlyId)
+      const source = new EventSource(`/api/stream?${params.toString()}`)
+      streamSourceRef.current = source
+
+      function handleStreamEvent(event: MessageEvent) {
+        try {
+          const parsed = JSON.parse(String(event.data || '{}')) as {
+            event?: string
+            payload?: unknown
+            seq?: number
+            stateVersion?: number
+          }
+          if (
+            typeof parsed.stateVersion === 'number' &&
+            parsed.stateVersion === lastStreamStateVersion.current
+          ) {
+          return
+        }
+        if (typeof parsed.stateVersion === 'number') {
+          lastStreamStateVersion.current = parsed.stateVersion
+        }
+        if (typeof parsed.seq === 'number') {
+          if (parsed.seq === lastStreamSeq.current) return
+          lastStreamSeq.current = parsed.seq
+        }
+
+        if (parsed.event === 'chat.history') {
+          const payload = parsed.payload as { messages?: Array<unknown> } | null
+          if (payload && Array.isArray(payload.messages)) {
+            console.info('[stream] apply history payload', {
+              count: payload.messages.length,
+            })
+            queryClient.setQueryData(
+              chatQueryKeys.history(activeFriendlyId, sessionKeyForHistory),
+              {
+                sessionKey: sessionKeyForHistory,
+                messages: payload.messages,
+              },
+            )
+            return
+          }
+          return
+        }
+        if (!parsed.event) return
+        if (parsed.event === 'chat') {
+          const payload = parsed.payload as
+            | {
+                runId?: string
+                sessionKey?: string
+                state?: string
+                message?: GatewayMessage
+              }
+            | null
+          if (payload?.message && typeof payload.message === 'object') {
+            const payloadSessionKey = payload.sessionKey
+            if (
+              payloadSessionKey &&
+              resolvedSessionKey &&
+              payloadSessionKey !== resolvedSessionKey &&
+              payloadSessionKey !== sessionKeyForHistory
+            ) {
+              return
+            }
+            const streamRunId =
+              typeof payload.runId === 'string' ? payload.runId : ''
+            const nextMessage = {
+              ...payload.message,
+              __streamRunId: streamRunId || undefined,
+            }
+            function upsert(messages: Array<GatewayMessage>) {
+              if (streamRunId) {
+                const index = messages.findIndex(
+                  (message) =>
+                    (message as { __streamRunId?: string }).__streamRunId ===
+                    streamRunId,
+                )
+                if (index >= 0) {
+                  const next = [...messages]
+                  next[index] = nextMessage
+                  return next
+                }
+              }
+              if (nextMessage.role === 'assistant') {
+                const nextTime = getMessageTimestamp(nextMessage)
+                const index = [...messages]
+                  .reverse()
+                  .findIndex((message) => message.role === 'assistant')
+                if (index >= 0) {
+                  const target = messages.length - 1 - index
+                  const targetTime = getMessageTimestamp(messages[target])
+                  if (Math.abs(nextTime - targetTime) <= 15000) {
+                    const next = [...messages]
+                    next[target] = nextMessage
+                    return next
+                  }
+                }
+              }
+              return [...messages, nextMessage]
+            }
+
+            updateHistoryMessages(
+              queryClient,
+              activeFriendlyId,
+              sessionKeyForHistory,
+              upsert,
+            )
+            if (payloadSessionKey && payloadSessionKey !== sessionKeyForHistory) {
+              updateHistoryMessages(
+                queryClient,
+                activeFriendlyId,
+                payloadSessionKey,
+                upsert,
+              )
+            }
+            if (payloadSessionKey) {
+              updateSessionLastMessage(
+                queryClient,
+                payloadSessionKey,
+                activeFriendlyId,
+                nextMessage,
+              )
+            }
+            if (payload.state === 'final') {
+              const nextRunId = streamRunId || 'final'
+              if (lastStreamFinalRunId.current !== nextRunId) {
+                lastStreamFinalRunId.current = nextRunId
+                if (streamFinalRefetchTimer.current) {
+                  window.clearTimeout(streamFinalRefetchTimer.current)
+                }
+                streamFinalRefetchTimer.current = window.setTimeout(() => {
+                  streamFinalRefetchTimer.current = null
+                  refreshHistoryRef.current()
+                }, 350)
+              }
+            }
+          }
+          return
+        }
+        if (!parsed.event.startsWith('chat.')) {
+          return
+        }
+      } catch {
+          // ignore parse errors
+        }
+      if (streamRefetchInFlight.current) return
+      streamRefetchInFlight.current = true
+      const refetchStart = performance.now()
+      Promise.resolve(refreshHistoryRef.current()).finally(() => {
+        streamRefetchInFlight.current = false
+        void refetchStart
+      })
+    }
+
+      function handleStreamOpen() {
+        streamReconnectAttempt.current = 0
+        console.info('[stream] open')
+        refreshHistoryRef.current()
+      }
+
+      function handleStreamError() {
+        console.info('[stream] error')
+        if (cancelled) return
+        if (streamReconnectTimer.current) return
+        if (streamSourceRef.current) {
+          streamSourceRef.current.close()
+          streamSourceRef.current = null
+        }
+        streamReconnectAttempt.current += 1
+        const backoff = Math.min(8000, 1000 * streamReconnectAttempt.current)
+        streamReconnectTimer.current = window.setTimeout(() => {
+          streamReconnectTimer.current = null
+          startStream()
+        }, backoff)
+      }
+
+      source.addEventListener('message', handleStreamEvent)
+      source.addEventListener('open', handleStreamOpen)
+      source.addEventListener('error', handleStreamError)
+    }
+
+    startStream()
+
+    return () => {
+      cancelled = true
+      streamStop()
+    }
+  }, [
+    activeFriendlyId,
+    isNewChat,
+    isRedirecting,
+    resolvedSessionKey,
+    sessionKeyForHistory,
+    streamStop,
+  ])
 
   useEffect(() => {
     if (isRedirecting) {
@@ -279,7 +498,7 @@ export function ChatScreen({
       }
       streamIdleTimer.current = window.setTimeout(() => {
         streamFinish()
-      }, 4000)
+      }, 12000)
     }
   }, [historyMessages, streamFinish])
 
@@ -406,7 +625,7 @@ export function ChatScreen({
     })
       .then(async (res) => {
         if (!res.ok) throw new Error(await readError(res))
-        streamStart()
+        refreshHistoryRef.current()
       })
       .catch((err) => {
         const messageText = err instanceof Error ? err.message : String(err)
