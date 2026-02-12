@@ -10,7 +10,13 @@ type GatewayFrame =
       payload?: unknown
       error?: { code: string; message: string; details?: unknown }
     }
-  | { type: 'event'; event: string; payload?: unknown; seq?: number }
+  | {
+      type: 'event'
+      event: string
+      payload?: unknown
+      seq?: number
+      stateVersion?: number
+    }
 
 type ConnectParams = {
   minProtocol: number
@@ -32,6 +38,44 @@ type GatewayWaiter = {
   waitForRes: (id: string) => Promise<unknown>
   handleMessage: (evt: MessageEvent) => void
 }
+
+type GatewayEventFrame = {
+  type: 'event'
+  event: string
+  payload?: unknown
+  seq?: number
+  stateVersion?: number
+}
+
+type GatewayEventStreamOptions = {
+  sessionKey?: string
+  friendlyId?: string
+  signal?: AbortSignal
+  onEvent: (event: GatewayEventFrame) => void
+  onError?: (error: Error) => void
+}
+
+type GatewayClient = {
+  connect: () => Promise<void>
+  sendReq: <TPayload = unknown>(method: string, params?: unknown) => Promise<TPayload>
+  close: () => void
+  setOnEvent: (handler?: (event: GatewayEventFrame) => void) => void
+  setOnError: (handler?: (error: Error) => void) => void
+  isClosed: () => boolean
+}
+
+type GatewayClientEntry = {
+  key: string
+  refs: number
+  client: GatewayClient
+}
+
+type GatewayClientHandle = {
+  client: GatewayClient
+  release: () => void
+}
+
+const sharedGatewayClients = new Map<string, GatewayClientEntry>()
 
 function getGatewayConfig() {
   const url = process.env.CLAWDBOT_GATEWAY_URL?.trim() || 'ws://127.0.0.1:18789'
@@ -67,6 +111,293 @@ function buildConnectParams(token: string, password: string): ConnectParams {
     role: 'operator',
     scopes: ['operator.admin'],
   }
+}
+
+async function connectGateway(ws: WebSocket): Promise<void> {
+  const { token, password } = getGatewayConfig()
+  await wsOpen(ws)
+  const connectId = randomUUID()
+  const connectParams = buildConnectParams(token, password)
+  const connectReq: GatewayFrame = {
+    type: 'req',
+    id: connectId,
+    method: 'connect',
+    params: connectParams,
+  }
+  const waiter = createGatewayWaiter()
+  ws.addEventListener('message', waiter.handleMessage)
+  ws.send(JSON.stringify(connectReq))
+  await waiter.waitForRes(connectId)
+  ws.removeEventListener('message', waiter.handleMessage)
+}
+
+function createGatewayClient(): GatewayClient {
+  const { url, token, password } = getGatewayConfig()
+  const ws = new WebSocket(url)
+  let closed = false
+  let connected = false
+  let onEvent: ((event: GatewayEventFrame) => void) | undefined
+  let onError: ((error: Error) => void) | undefined
+  const waiters = new Map<
+    string,
+    {
+      resolve: (v: unknown) => void
+      reject: (e: Error) => void
+    }
+  >()
+
+  function rejectAll(error: Error) {
+    for (const [, waiter] of waiters) {
+      waiter.reject(error)
+    }
+    waiters.clear()
+  }
+
+  function handleMessage(evt: MessageEvent) {
+    try {
+      const data = typeof evt.data === 'string' ? evt.data : ''
+      const parsed = JSON.parse(data) as GatewayFrame
+      if (parsed.type === 'event') {
+        if (onEvent) onEvent(parsed)
+        return
+      }
+      if (parsed.type !== 'res') return
+      const waiter = waiters.get(parsed.id)
+      if (!waiter) return
+      waiters.delete(parsed.id)
+      if (parsed.ok) waiter.resolve(parsed.payload)
+      else waiter.reject(new Error(parsed.error?.message ?? 'gateway error'))
+    } catch {
+      // ignore parse errors
+    }
+  }
+
+  function handleError(err: Event) {
+    if (onError) {
+      onError(
+        new Error(`Gateway client error: ${String((err as any)?.message ?? err)}`),
+      )
+    }
+  }
+
+  function handleClose() {
+    if (closed) return
+    closed = true
+    rejectAll(new Error('Gateway client closed'))
+  }
+
+  ws.addEventListener('message', handleMessage)
+  ws.addEventListener('error', handleError)
+  ws.addEventListener('close', handleClose)
+
+  async function connect() {
+    if (connected || closed) return
+    await wsOpen(ws)
+    const connectId = randomUUID()
+    const connectParams = buildConnectParams(token, password)
+    const connectReq: GatewayFrame = {
+      type: 'req',
+      id: connectId,
+      method: 'connect',
+      params: connectParams,
+    }
+    const waitForRes = new Promise<unknown>((resolve, reject) => {
+      waiters.set(connectId, { resolve, reject })
+    })
+    ws.send(JSON.stringify(connectReq))
+    await waitForRes
+    connected = true
+  }
+
+  function sendReq<TPayload = unknown>(method: string, params?: unknown) {
+    if (closed) {
+      return Promise.reject(new Error('Gateway client closed'))
+    }
+    const id = randomUUID()
+    const req: GatewayFrame = {
+      type: 'req',
+      id,
+      method,
+      params,
+    }
+    const waitForRes = new Promise<unknown>((resolve, reject) => {
+      waiters.set(id, { resolve, reject })
+    })
+    ws.send(JSON.stringify(req))
+    return waitForRes as Promise<TPayload>
+  }
+
+  function close() {
+    if (closed) return
+    closed = true
+    ws.removeEventListener('message', handleMessage)
+    ws.removeEventListener('error', handleError)
+    ws.removeEventListener('close', handleClose)
+    rejectAll(new Error('Gateway client closed'))
+    void wsClose(ws)
+  }
+
+  function setOnEvent(handler?: (event: GatewayEventFrame) => void) {
+    onEvent = handler
+  }
+
+  function setOnError(handler?: (error: Error) => void) {
+    onError = handler
+  }
+
+  function isClosed() {
+    return closed
+  }
+
+  return { connect, sendReq, close, setOnEvent, setOnError, isClosed }
+}
+
+export async function acquireGatewayClient(
+  key: string,
+  options?: {
+    onEvent?: (event: GatewayEventFrame) => void
+    onError?: (error: Error) => void
+  },
+): Promise<GatewayClientHandle> {
+  const existing = sharedGatewayClients.get(key)
+  if (existing && !existing.client.isClosed()) {
+    existing.refs += 1
+    if (options?.onEvent) existing.client.setOnEvent(options.onEvent)
+    if (options?.onError) existing.client.setOnError(options.onError)
+    return {
+      client: existing.client,
+      release: function release() {
+        releaseGatewayClient(key)
+      },
+    }
+  }
+
+  const client = createGatewayClient()
+  if (options?.onEvent) client.setOnEvent(options.onEvent)
+  if (options?.onError) client.setOnError(options.onError)
+  await client.connect()
+  sharedGatewayClients.set(key, { key, refs: 1, client })
+  return {
+    client,
+    release: function release() {
+      releaseGatewayClient(key)
+    },
+  }
+}
+
+function releaseGatewayClient(key: string) {
+  const entry = sharedGatewayClients.get(key)
+  if (!entry) return
+  entry.refs -= 1
+  if (entry.refs > 0) return
+  entry.client.close()
+  sharedGatewayClients.delete(key)
+}
+
+export async function gatewayRpcShared<TPayload = unknown>(
+  method: string,
+  params: unknown,
+  key?: string,
+): Promise<TPayload> {
+  if (key) {
+    const entry = sharedGatewayClients.get(key)
+    if (entry && !entry.client.isClosed()) {
+      await entry.client.connect()
+      return entry.client.sendReq<TPayload>(method, params)
+    }
+  }
+  return gatewayRpc<TPayload>(method, params)
+}
+
+export function gatewayEventStream({
+  sessionKey,
+  friendlyId,
+  signal,
+  onEvent,
+  onError,
+}: GatewayEventStreamOptions) {
+  const { url } = getGatewayConfig()
+  const ws = new WebSocket(url)
+  let closed = false
+
+  function handleMessage(evt: MessageEvent) {
+    try {
+      const data = typeof evt.data === 'string' ? evt.data : ''
+      const parsed = JSON.parse(data) as GatewayFrame
+      if (parsed.type !== 'event') return
+      onEvent(parsed)
+    } catch {
+      // ignore parse errors
+    }
+  }
+
+  function handleError(err: Event) {
+    if (onError) {
+      onError(
+        new Error(`Gateway event stream error: ${String((err as any)?.message ?? err)}`),
+      )
+    }
+  }
+
+  function handleClose() {
+    if (closed) return
+    closed = true
+  }
+
+  ws.addEventListener('message', handleMessage)
+  ws.addEventListener('error', handleError)
+  ws.addEventListener('close', handleClose)
+
+  void connectGateway(ws)
+    .then(async () => {
+      if (!sessionKey && !friendlyId) return
+      const subscribeReq: GatewayFrame = {
+        type: 'req',
+        id: randomUUID(),
+        method: 'chat.subscribe',
+        params: {
+          sessionKey: sessionKey || undefined,
+          friendlyId: friendlyId || undefined,
+        },
+      }
+      const waiter = createGatewayWaiter()
+      ws.addEventListener('message', waiter.handleMessage)
+      try {
+        ws.send(JSON.stringify(subscribeReq))
+        await waiter.waitForRes(subscribeReq.id)
+      } catch (err) {
+        if (onError) {
+          onError(err instanceof Error ? err : new Error(String(err)))
+        }
+        close()
+      } finally {
+        ws.removeEventListener('message', waiter.handleMessage)
+      }
+    })
+    .catch((err) => {
+      if (onError) onError(err instanceof Error ? err : new Error(String(err)))
+    })
+
+  if (signal) {
+    signal.addEventListener(
+      'abort',
+      () => {
+        close()
+      },
+      { once: true },
+    )
+  }
+
+  function close() {
+    if (closed) return
+    closed = true
+    ws.removeEventListener('message', handleMessage)
+    ws.removeEventListener('error', handleError)
+    ws.removeEventListener('close', handleClose)
+    void wsClose(ws)
+  }
+
+  return close
 }
 
 function createGatewayWaiter(): GatewayWaiter {

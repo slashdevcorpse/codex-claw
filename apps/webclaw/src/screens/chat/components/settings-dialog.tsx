@@ -6,6 +6,7 @@ import {
   Sun01Icon,
 } from '@hugeicons/core-free-icons'
 import type { PathsPayload } from '../types'
+import type { ThemeMode } from '@/hooks/use-chat-settings'
 import {
   DialogClose,
   DialogContent,
@@ -16,7 +17,6 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsList, TabsTab } from '@/components/ui/tabs'
 import { useChatSettings } from '@/hooks/use-chat-settings'
-import type { ThemeMode } from '@/hooks/use-chat-settings'
 import { Button } from '@/components/ui/button'
 
 type SettingsSectionProps = {

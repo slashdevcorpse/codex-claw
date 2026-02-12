@@ -46,7 +46,6 @@ function ScrollButton({
     }
 
     const observer = new MutationObserver(() => {
-      if (!element) return
       if (element.scrollTop !== lastScrollTopRef.current) {
         lastScrollTopRef.current = element.scrollTop
       }

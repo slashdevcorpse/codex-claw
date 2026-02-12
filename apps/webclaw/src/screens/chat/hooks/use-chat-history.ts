@@ -1,8 +1,9 @@
 import { useMemo, useRef } from 'react'
-import { useQuery, type QueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 
 import { chatQueryKeys, fetchHistory } from '../chat-queries'
 import { getMessageTimestamp, textFromMessage } from '../utils'
+import type { QueryClient } from '@tanstack/react-query'
 import type { GatewayMessage, HistoryResponse } from '../types'
 
 type UseChatHistoryInput = {
@@ -35,26 +36,35 @@ export function useChatHistory({
   const historyQuery = useQuery({
     queryKey: historyKey,
     queryFn: async function fetchHistoryForSession() {
-      const cached = queryClient.getQueryData(historyKey) as
-        | HistoryResponse
-        | undefined
-      const optimisticMessages = Array.isArray(cached?.messages)
-        ? cached.messages.filter((message) => {
-            if (message.status === 'sending') return true
-            if (message.__optimisticId) return true
-            return Boolean(message.clientId)
-          })
+      const cached = queryClient.getQueryData<HistoryResponse>(historyKey)
+      const cachedMessages = Array.isArray(cached?.messages)
+        ? cached.messages
         : []
+      const optimisticMessages = cachedMessages.filter((message) => {
+        if (message.status === 'sending') return true
+        if (message.__optimisticId) return true
+        return Boolean(message.clientId)
+      })
+      const streamingMessages = cachedMessages.filter((message) => {
+        const runId = (message as { __streamRunId?: unknown }).__streamRunId
+        return typeof runId === 'string' && runId.trim().length > 0
+      })
 
       const serverData = await fetchHistory({
         sessionKey: sessionKeyForHistory,
         friendlyId: activeFriendlyId,
       })
-      if (!optimisticMessages.length) return serverData
+      if (!optimisticMessages.length && !streamingMessages.length) {
+        return serverData
+      }
 
-      const merged = mergeOptimisticHistoryMessages(
+      const mergedWithOptimistic = mergeOptimisticHistoryMessages(
         serverData.messages,
         optimisticMessages,
+      )
+      const merged = mergeStreamingHistoryMessages(
+        mergedWithOptimistic,
+        streamingMessages,
       )
 
       return {
@@ -79,12 +89,11 @@ export function useChatHistory({
     const messages = Array.isArray(historyQuery.data?.messages)
       ? historyQuery.data.messages
       : []
-    const last = messages[messages.length - 1]
-    const lastId =
-      last && typeof (last as { id?: string }).id === 'string'
-        ? (last as { id?: string }).id
-        : ''
-    const signature = `${messages.length}:${last?.role ?? ''}:${lastId}:${textFromMessage(last ?? { role: 'user', content: [] }).slice(-32)}`
+    const last = messages.at(-1)
+    const lastId = typeof last?.id === 'string' ? last.id : ''
+    const lastRole = typeof last?.role === 'string' ? last.role : ''
+    const lastText = last ? textFromMessage(last) : ''
+    const signature = `${messages.length}:${lastRole}:${lastId}:${lastText.slice(-32)}`
     if (signature === stableHistorySignatureRef.current) {
       return stableHistoryMessagesRef.current
     }
@@ -114,6 +123,44 @@ export function useChatHistory({
     activeCanonicalKey,
     sessionKeyForHistory,
   }
+}
+
+function mergeStreamingHistoryMessages(
+  serverMessages: Array<GatewayMessage>,
+  streamingMessages: Array<GatewayMessage>,
+): Array<GatewayMessage> {
+  if (!streamingMessages.length) return serverMessages
+
+  const merged = [...serverMessages]
+  for (const streamingMessage of streamingMessages) {
+    const runId = (streamingMessage as { __streamRunId?: unknown }).__streamRunId
+    if (typeof runId !== 'string' || runId.trim().length === 0) continue
+
+    const hasMatch = merged.some((serverMessage) => {
+      const serverRunId = (serverMessage as { __streamRunId?: unknown })
+        .__streamRunId
+      if (
+        typeof serverRunId === 'string' &&
+        serverRunId.trim().length > 0 &&
+        serverRunId === runId
+      ) {
+        return true
+      }
+      if (serverMessage.role !== streamingMessage.role) return false
+      const streamingText = textFromMessage(streamingMessage)
+      if (!streamingText) return false
+      if (streamingText !== textFromMessage(serverMessage)) return false
+      const streamingTime = getMessageTimestamp(streamingMessage)
+      const serverTime = getMessageTimestamp(serverMessage)
+      return Math.abs(streamingTime - serverTime) <= 15000
+    })
+
+    if (!hasMatch) {
+      merged.push(streamingMessage)
+    }
+  }
+
+  return merged
 }
 
 function mergeOptimisticHistoryMessages(
