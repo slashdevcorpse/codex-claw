@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react'
 
-import { getMessageTimestamp } from '../utils'
+import { getMessageTimestamp, textFromMessage } from '../utils'
 import {
   chatQueryKeys,
   updateHistoryMessages,
@@ -17,6 +17,12 @@ type UseChatStreamInput = {
   sessionKeyForHistory: string
   queryClient: QueryClient
   refreshHistory: () => void
+  onChatEvent?: (payload: {
+    runId?: string
+    sessionKey?: string
+    state?: string
+    message?: GatewayMessage
+  }) => void
 }
 
 export function useChatStream({
@@ -27,10 +33,12 @@ export function useChatStream({
   sessionKeyForHistory,
   queryClient,
   refreshHistory,
+  onChatEvent,
 }: UseChatStreamInput) {
   const streamSourceRef = useRef<EventSource | null>(null)
   const streamReconnectTimer = useRef<number | null>(null)
   const streamReconnectAttempt = useRef(0)
+  const streamRunTextRef = useRef(new Map<string, string>())
   const refreshHistoryRef = useRef(refreshHistory)
 
   useEffect(() => {
@@ -46,6 +54,7 @@ export function useChatStream({
       streamSourceRef.current.close()
       streamSourceRef.current = null
     }
+    streamRunTextRef.current.clear()
   }, [])
 
   useEffect(() => {
@@ -95,6 +104,9 @@ export function useChatStream({
                   message?: GatewayMessage
                 }
               | null
+            if (payload) {
+              onChatEvent?.(payload)
+            }
             if (payload?.message && typeof payload.message === 'object') {
               const payloadSessionKey = payload.sessionKey
               if (
@@ -107,11 +119,53 @@ export function useChatStream({
               }
               const streamRunId =
                 typeof payload.runId === 'string' ? payload.runId : ''
-              const nextMessage = {
+              const state = typeof payload.state === 'string' ? payload.state : ''
+              let nextMessage: GatewayMessage = {
                 ...payload.message,
                 __streamRunId: streamRunId || undefined,
               }
+
+              if (streamRunId && state === 'delta') {
+                const deltaText = textFromMessage(nextMessage)
+                const previousText = streamRunTextRef.current.get(streamRunId) ?? ''
+                const cumulativeText = `${previousText}${deltaText}`
+                if (cumulativeText.length > 0) {
+                  streamRunTextRef.current.set(streamRunId, cumulativeText)
+                  nextMessage = {
+                    ...nextMessage,
+                    content: [{ type: 'text', text: cumulativeText }],
+                  }
+                }
+              }
+
+              if (streamRunId && state === 'final') {
+                const finalText = textFromMessage(nextMessage)
+                if (!finalText) {
+                  const bufferedText = streamRunTextRef.current.get(streamRunId)
+                  if (bufferedText) {
+                    nextMessage = {
+                      ...nextMessage,
+                      content: [{ type: 'text', text: bufferedText }],
+                    }
+                  }
+                }
+                streamRunTextRef.current.delete(streamRunId)
+              }
+
+              if (
+                streamRunId &&
+                (state === 'error' || state === 'aborted')
+              ) {
+                streamRunTextRef.current.delete(streamRunId)
+              }
+
               function upsert(messages: Array<GatewayMessage>) {
+                const lastUserIndex = [...messages]
+                  .reverse()
+                  .findIndex((message) => message.role === 'user')
+                const resolvedLastUserIndex =
+                  lastUserIndex >= 0 ? messages.length - 1 - lastUserIndex : -1
+
                 if (streamRunId) {
                   const index = messages.findIndex(
                     (message) =>
@@ -119,9 +173,12 @@ export function useChatStream({
                       streamRunId,
                   )
                   if (index >= 0) {
-                    const next = [...messages]
-                    next[index] = nextMessage
-                    return next
+                    if (index > resolvedLastUserIndex) {
+                      const next = [...messages]
+                      next[index] = nextMessage
+                      return next
+                    }
+                    return [...messages, nextMessage]
                   }
                 }
                 if (nextMessage.role === 'assistant') {
@@ -131,10 +188,17 @@ export function useChatStream({
                     .findIndex((message) => message.role === 'assistant')
                   if (index >= 0) {
                     const target = messages.length - 1 - index
-                    const targetTime = getMessageTimestamp(messages[target])
-                    if (Math.abs(nextTime - targetTime) <= 15000) {
+                    if (target > resolvedLastUserIndex) {
+                      const targetTime = getMessageTimestamp(messages[target])
+                      if (Math.abs(nextTime - targetTime) <= 15000) {
+                        const next = [...messages]
+                        next[target] = nextMessage
+                        return next
+                      }
+                    }
+                    if (resolvedLastUserIndex >= 0 && target <= resolvedLastUserIndex) {
                       const next = [...messages]
-                      next[target] = nextMessage
+                      next.push(nextMessage)
                       return next
                     }
                   }
@@ -163,13 +227,6 @@ export function useChatStream({
                   activeFriendlyId,
                   nextMessage,
                 )
-              }
-              if (
-                payload.state === 'final' ||
-                payload.state === 'error' ||
-                payload.state === 'aborted'
-              ) {
-                refreshHistoryRef.current()
               }
             }
             return

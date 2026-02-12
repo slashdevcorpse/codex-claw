@@ -1,8 +1,12 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { deriveFriendlyIdFromKey, isMissingGatewayAuth, readError } from './utils'
+import {
+  deriveFriendlyIdFromKey,
+  isMissingGatewayAuth,
+  readError,
+} from './utils'
 import { createOptimisticMessage } from './chat-screen-utils'
 import {
   appendHistoryMessage,
@@ -71,7 +75,8 @@ export function ChatScreen({
   const [pinToTop, setPinToTop] = useState(
     () => hasPendingSend() || hasPendingGeneration(),
   )
-  const sendRefreshTimersRef = useRef<Array<number>>([])
+  const pendingRunIdsRef = useRef(new Set<string>())
+  const pendingRunTimersRef = useRef(new Map<string, number>())
   const { isMobile } = useChatMobile(queryClient)
   const {
     sessionsQuery,
@@ -84,7 +89,6 @@ export function ChatScreen({
   } = useChatSessions({ activeFriendlyId, isNewChat, forcedSessionKey })
   const {
     historyQuery,
-    historyMessages,
     displayMessages,
     historyError,
     resolvedSessionKey,
@@ -154,7 +158,68 @@ export function ChatScreen({
     !historyQuery.isFetching &&
     !historyQuery.isSuccess
 
+  const refreshHistory = useCallback(() => {
+    void historyQuery.refetch()
+  }, [historyQuery])
+
   const hideUi = shouldRedirectToNew || isRedirecting
+
+  const finishRun = useCallback(
+    (runId: string) => {
+      if (!runId) return
+      const timer = pendingRunTimersRef.current.get(runId)
+      if (typeof timer === 'number') {
+        window.clearTimeout(timer)
+      }
+      pendingRunTimersRef.current.delete(runId)
+      pendingRunIdsRef.current.delete(runId)
+      if (pendingRunIdsRef.current.size === 0) {
+        setPendingGeneration(false)
+        setWaitingForResponse(false)
+      }
+    },
+    [setWaitingForResponse],
+  )
+
+  const startRun = useCallback(
+    (runId: string) => {
+      if (!runId) return
+      pendingRunIdsRef.current.add(runId)
+      const existingTimer = pendingRunTimersRef.current.get(runId)
+      if (typeof existingTimer === 'number') {
+        window.clearTimeout(existingTimer)
+      }
+      const timeout = window.setTimeout(() => {
+        pendingRunTimersRef.current.delete(runId)
+        pendingRunIdsRef.current.delete(runId)
+        refreshHistory()
+        if (pendingRunIdsRef.current.size === 0) {
+          setPendingGeneration(false)
+          setWaitingForResponse(false)
+        }
+      }, 120000)
+      pendingRunTimersRef.current.set(runId, timeout)
+      setPendingGeneration(true)
+      setWaitingForResponse(true)
+    },
+    [refreshHistory],
+  )
+
+  const finishAllRuns = useCallback(() => {
+    for (const [, timer] of pendingRunTimersRef.current) {
+      window.clearTimeout(timer)
+    }
+    pendingRunTimersRef.current.clear()
+    pendingRunIdsRef.current.clear()
+    setPendingGeneration(false)
+    setWaitingForResponse(false)
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      finishAllRuns()
+    }
+  }, [finishAllRuns])
 
   function sendMessage(
     sessionKey: string,
@@ -195,19 +260,6 @@ export function ChatScreen({
       content: a.base64,
     }))
 
-    function schedulePostSendRefreshes() {
-      for (const timer of sendRefreshTimersRef.current) {
-        window.clearTimeout(timer)
-      }
-      sendRefreshTimersRef.current = []
-      const delays = [0, 2000, 6000]
-      sendRefreshTimersRef.current = delays.map((delay) =>
-        window.setTimeout(() => {
-          refreshHistory()
-        }, delay),
-      )
-    }
-
     fetch('/api/send', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -222,7 +274,16 @@ export function ChatScreen({
     })
       .then(async (res) => {
         if (!res.ok) throw new Error(await readError(res))
-        schedulePostSendRefreshes()
+        const payload = (await res.json().catch(() => ({}))) as {
+          runId?: string
+        }
+        if (
+          typeof payload.runId === 'string' &&
+          payload.runId.trim().length > 0
+        ) {
+          startRun(payload.runId.trim())
+        }
+        refreshHistory()
       })
       .catch((err) => {
         const messageText = err instanceof Error ? err.message : String(err)
@@ -406,10 +467,6 @@ export function ChatScreen({
     )
   }, [gatewayError, handleGatewayRefetch, showGatewayNotice])
 
-  const refreshHistory = useCallback(() => {
-    void historyQuery.refetch()
-  }, [historyQuery])
-
   const { stopStream } = useChatStream({
     activeFriendlyId,
     isNewChat,
@@ -418,6 +475,35 @@ export function ChatScreen({
     sessionKeyForHistory,
     queryClient,
     refreshHistory,
+    onChatEvent(payload) {
+      const payloadSessionKey =
+        typeof payload.sessionKey === 'string' ? payload.sessionKey : ''
+      if (
+        payloadSessionKey &&
+        resolvedSessionKey &&
+        payloadSessionKey !== resolvedSessionKey &&
+        payloadSessionKey !== sessionKeyForHistory
+      ) {
+        return
+      }
+      const runId = typeof payload.runId === 'string' ? payload.runId : ''
+      const state = typeof payload.state === 'string' ? payload.state : ''
+      if (runId && state === 'delta') {
+        startRun(runId)
+      }
+      if (
+        runId &&
+        (state === 'final' || state === 'error' || state === 'aborted')
+      ) {
+        finishRun(runId)
+      }
+      if (
+        !runId &&
+        (state === 'final' || state === 'error' || state === 'aborted')
+      ) {
+        finishAllRuns()
+      }
+    },
   })
 
   useChatErrorState({
@@ -446,11 +532,8 @@ export function ChatScreen({
 
   useChatGenerationGuard({
     waitingForResponse,
-    historyMessages,
-    streamStop: stopStream,
     refreshHistory,
     setWaitingForResponse,
-    setPinToTop,
   })
 
   useChatPendingSend({
