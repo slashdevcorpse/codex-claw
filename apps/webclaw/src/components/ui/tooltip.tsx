@@ -20,7 +20,15 @@ function TooltipRoot({ children, ...props }: TooltipRootProps) {
 type TooltipTriggerProps = React.ComponentProps<typeof Tooltip.Trigger>
 
 function TooltipTrigger({ className, ...props }: TooltipTriggerProps) {
-  return <Tooltip.Trigger className={cn(className)} {...props} />
+  return (
+    <Tooltip.Trigger
+      className={cn(
+        'inline-flex items-center p-0 m-0 border-0 bg-transparent',
+        className,
+      )}
+      {...props}
+    />
+  )
 }
 
 type TooltipContentProps = {

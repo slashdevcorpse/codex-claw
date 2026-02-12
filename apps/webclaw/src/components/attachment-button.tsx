@@ -5,6 +5,7 @@ import { HugeiconsIcon } from '@hugeicons/react'
 import { PlusSignIcon } from '@hugeicons/core-free-icons'
 
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 
 /** Maximum file size before compression (10MB) */
 const MAX_FILE_SIZE = 10 * 1024 * 1024
@@ -53,6 +54,7 @@ export type AttachmentFile = {
 type AttachmentButtonProps = {
   onFileSelect: (file: AttachmentFile) => void
   disabled?: boolean
+  buttonProps?: React.ComponentProps<typeof Button>
 }
 
 /**
@@ -184,6 +186,7 @@ function isAcceptedImage(file: File): boolean {
 export function AttachmentButton({
   onFileSelect,
   disabled = false,
+  buttonProps,
 }: AttachmentButtonProps) {
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -264,13 +267,17 @@ export function AttachmentButton({
         aria-hidden="true"
       />
       <Button
-        variant="ghost"
-        size="icon-sm"
-        onClick={handleClick}
-        disabled={disabled}
-        className="rounded-full"
+        variant={buttonProps?.variant ?? 'ghost'}
+        size={buttonProps?.size ?? 'icon-sm'}
+        onClick={(event) => {
+          buttonProps?.onClick?.(event)
+          handleClick()
+        }}
+        disabled={disabled || buttonProps?.disabled}
+        className={cn('rounded-full', buttonProps?.className)}
         aria-label="Attach image"
-        type="button"
+        type={buttonProps?.type ?? 'button'}
+        {...buttonProps}
       >
         <HugeiconsIcon icon={PlusSignIcon} size={20} strokeWidth={1.5} />
       </Button>

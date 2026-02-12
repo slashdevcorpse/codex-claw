@@ -2,37 +2,45 @@
 
 import React, {
   createContext,
+  memo,
   useContext,
+  useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react'
 import {
   TooltipContent,
-  TooltipProvider,
   TooltipRoot,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 
-type PromptInputContextType = {
-  isLoading: boolean
+type PromptInputValueContextType = {
   value: string
   setValue: (value: string) => void
   maxHeight: number | string
-  onSubmit?: () => void
-  disabled?: boolean
   textareaRef: React.RefObject<HTMLTextAreaElement | null>
 }
 
-const PromptInputContext = createContext<PromptInputContextType>({
-  isLoading: false,
+type PromptInputUiContextType = {
+  isLoading: boolean
+  onSubmit?: () => void
+  disabled?: boolean
+}
+
+const PromptInputValueContext = createContext<PromptInputValueContextType>({
   value: '',
   setValue: () => {},
   maxHeight: 240,
+  textareaRef: React.createRef<HTMLTextAreaElement>(),
+})
+
+const PromptInputUiContext = createContext<PromptInputUiContextType>({
+  isLoading: false,
   onSubmit: undefined,
   disabled: false,
-  textareaRef: React.createRef<HTMLTextAreaElement>(),
 })
 
 let globalPromptTarget: HTMLTextAreaElement | null = null
@@ -63,14 +71,20 @@ function bindGlobalPromptListener() {
   })
 }
 
-function usePromptInput() {
-  return useContext(PromptInputContext)
+function usePromptInputValue() {
+  return useContext(PromptInputValueContext)
+}
+
+function usePromptInputUi() {
+  return useContext(PromptInputUiContext)
 }
 
 export type PromptInputProps = {
   isLoading?: boolean
   value?: string
   onValueChange?: (value: string) => void
+  valueRef?: React.MutableRefObject<string>
+  setValueRef?: React.MutableRefObject<((value: string) => void) | null>
   maxHeight?: number | string
   onSubmit?: () => void
   children: React.ReactNode
@@ -84,6 +98,8 @@ function PromptInput({
   maxHeight = 240,
   value,
   onValueChange,
+  valueRef,
+  setValueRef,
   onSubmit,
   children,
   disabled = false,
@@ -100,24 +116,51 @@ function PromptInput({
     onValueChange?.(newValue)
   }
 
+  useEffect(() => {
+    if (setValueRef) {
+      setValueRef.current = function setValue(nextValue: string) {
+        setInternalValue(nextValue)
+        onValueChange?.(nextValue)
+      }
+      return () => {
+        setValueRef.current = null
+      }
+    }
+  }, [onValueChange, setValueRef])
+
+  useEffect(() => {
+    if (valueRef) {
+      valueRef.current = value ?? internalValue
+    }
+  }, [internalValue, value, valueRef])
+
   function handleClick(e: React.MouseEvent<HTMLDivElement>) {
     if (!disabled) textareaRef.current?.focus()
     onClick?.(e)
   }
 
+  const valueContext = useMemo(
+    () => ({
+      value: value ?? internalValue,
+      setValue: onValueChange ?? handleChange,
+      maxHeight,
+      textareaRef,
+    }),
+    [value, internalValue, onValueChange, maxHeight],
+  )
+
+  const uiContext = useMemo(
+    () => ({
+      isLoading,
+      onSubmit,
+      disabled,
+    }),
+    [disabled, isLoading, onSubmit],
+  )
+
   return (
-    <TooltipProvider>
-      <PromptInputContext.Provider
-        value={{
-          isLoading,
-          value: value ?? internalValue,
-          setValue: onValueChange ?? handleChange,
-          maxHeight,
-          onSubmit,
-          disabled,
-          textareaRef,
-        }}
-      >
+    <PromptInputUiContext.Provider value={uiContext}>
+      <PromptInputValueContext.Provider value={valueContext}>
         <div
           onClick={handleClick}
           className={cn(
@@ -129,8 +172,8 @@ function PromptInput({
         >
           {children}
         </div>
-      </PromptInputContext.Provider>
-    </TooltipProvider>
+      </PromptInputValueContext.Provider>
+    </PromptInputUiContext.Provider>
   )
 }
 
@@ -146,18 +189,20 @@ function PromptInputTextarea({
   inputRef,
   ...props
 }: PromptInputTextareaProps) {
-  const { value, setValue, maxHeight, onSubmit, disabled, textareaRef } =
-    usePromptInput()
+  const { value, setValue, maxHeight, textareaRef } = usePromptInputValue()
+  const { onSubmit, disabled } = usePromptInputUi()
 
   function adjustHeight(el: HTMLTextAreaElement | null) {
     if (!el || disableAutosize) return
 
     el.style.height = 'auto'
+    const minHeight = 28
+    const measured = Math.max(minHeight, el.scrollHeight)
 
     if (typeof maxHeight === 'number') {
-      el.style.height = `${Math.min(el.scrollHeight, maxHeight)}px`
+      el.style.height = `${Math.min(measured, maxHeight)}px`
     } else {
-      el.style.height = `min(${el.scrollHeight}px, ${maxHeight})`
+      el.style.height = `min(${measured}px, ${maxHeight})`
     }
   }
 
@@ -181,11 +226,13 @@ function PromptInputTextarea({
 
     const el = textareaRef.current
     el.style.height = 'auto'
+    const minHeight = 28
+    const measured = Math.max(minHeight, el.scrollHeight)
 
     if (typeof maxHeight === 'number') {
-      el.style.height = `${Math.min(el.scrollHeight, maxHeight)}px`
+      el.style.height = `${Math.min(measured, maxHeight)}px`
     } else {
-      el.style.height = `min(${el.scrollHeight}px, ${maxHeight})`
+      el.style.height = `min(${measured}px, ${maxHeight})`
     }
   }, [value, maxHeight, disableAutosize])
 
@@ -209,7 +256,7 @@ function PromptInputTextarea({
       onChange={handleChange}
       onKeyDown={handleKeyDown}
       className={cn(
-        'text-primary-950 min-h-[28px] w-full resize-none border-none bg-transparent shadow-none outline-none focus-visible:ring-0 pl-4 pr-1 text-[15px] placeholder:text-primary-500',
+        'text-primary-950 min-h-[28px] w-full resize-none border-none bg-transparent shadow-none outline-none focus-visible:ring-0 pl-4 pr-1 text-[15px] leading-[22px] placeholder:text-primary-500',
         className,
       )}
       rows={1}
@@ -237,27 +284,34 @@ function PromptInputActions({
 export type PromptInputActionProps = {
   className?: string
   tooltip: React.ReactNode
-  children: React.ReactNode
+  render: (props: React.ComponentProps<'button'>) => React.ReactElement
   side?: 'top' | 'bottom' | 'left' | 'right'
 } & React.ComponentProps<typeof TooltipRoot>
 
 function PromptInputAction({
   tooltip,
-  children,
+  render,
   className,
   side = 'top',
   ...props
 }: PromptInputActionProps) {
-  const { disabled } = usePromptInput()
+  const { disabled } = usePromptInputUi()
 
   return (
     <TooltipRoot {...props}>
       <TooltipTrigger
-        disabled={disabled}
-        onClick={(event) => event.stopPropagation()}
-      >
-        {children}
-      </TooltipTrigger>
+        render={(triggerProps) =>
+          render({
+            ...triggerProps,
+            onClick: (event) => {
+              triggerProps.onClick?.(event)
+              event.stopPropagation()
+            },
+            disabled,
+            className: undefined,
+          })
+        }
+      />
       <TooltipContent side={side} className={className}>
         {tooltip}
       </TooltipContent>
@@ -265,9 +319,12 @@ function PromptInputAction({
   )
 }
 
+const MemoizedPromptInputAction = memo(PromptInputAction)
+MemoizedPromptInputAction.displayName = 'PromptInputAction'
+
 export {
   PromptInput,
   PromptInputTextarea,
   PromptInputActions,
-  PromptInputAction,
+  MemoizedPromptInputAction as PromptInputAction,
 }
