@@ -8,6 +8,7 @@ import {
   ChatContainerScrollAnchor,
 } from '@/components/prompt-kit/chat-container'
 import { TypingIndicator } from '@/components/prompt-kit/typing-indicator'
+import { useChatSettings } from '@/hooks/use-chat-settings'
 
 type ChatMessageListProps = {
   messages: Array<GatewayMessage>
@@ -38,16 +39,39 @@ function ChatMessageListComponent({
   headerHeight,
   contentStyle,
 }: ChatMessageListProps) {
+  const { settings } = useChatSettings()
   const anchorRef = useRef<HTMLDivElement | null>(null)
   const lastUserRef = useRef<HTMLDivElement | null>(null)
   const programmaticScroll = useRef(false)
   const prevPinRef = useRef(pinToTop)
   const prevUserIndexRef = useRef<number | undefined>(undefined)
 
-  // Filter out toolResult messages - they'll be displayed inside their associated tool calls
-  const displayMessages = useMemo(() => {
-    return messages.filter((msg) => msg.role !== 'toolResult')
+  const linkedToolCallIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (const message of messages) {
+      if (message.role !== 'assistant') continue
+      const toolCalls = getToolCallsFromMessage(message)
+      for (const toolCall of toolCalls) {
+        const toolCallId =
+          typeof toolCall.id === 'string' ? toolCall.id.trim() : ''
+        if (!toolCallId) continue
+        ids.add(toolCallId)
+      }
+    }
+    return ids
   }, [messages])
+
+  // Hide only tool results that are already rendered under an associated tool call.
+  const displayMessages = useMemo(() => {
+    return messages.filter((msg) => {
+      if (msg.role !== 'toolResult') return true
+      if (!settings.showToolMessages) return true
+      const toolCallId =
+        typeof msg.toolCallId === 'string' ? msg.toolCallId.trim() : ''
+      if (!toolCallId) return true
+      return !linkedToolCallIds.has(toolCallId)
+    })
+  }, [linkedToolCallIds, messages, settings.showToolMessages])
 
   const toolResultsByCallId = useMemo(() => {
     const map = new Map<string, GatewayMessage>()

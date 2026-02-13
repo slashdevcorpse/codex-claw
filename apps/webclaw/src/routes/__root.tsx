@@ -86,6 +86,7 @@ export const Route = createRootRoute({
 
   shellComponent: RootDocument,
   component: RootLayout,
+  notFoundComponent: RootNotFound,
 })
 
 const queryClient = new QueryClient()
@@ -110,5 +111,13 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         <Scripts />
       </body>
     </html>
+  )
+}
+
+function RootNotFound() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-surface px-6">
+      <p className="text-pretty text-sm text-primary-700">Page not found.</p>
+    </div>
   )
 }

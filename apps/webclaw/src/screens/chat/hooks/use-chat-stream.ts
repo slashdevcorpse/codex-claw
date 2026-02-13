@@ -45,9 +45,6 @@ export function useChatStream({
 }: UseChatStreamInput) {
   const streamSourceRef = useRef<EventSource | null>(null)
   const streamReconnectTimer = useRef<number | null>(null)
-  const streamAgentRefreshTimer = useRef<number | null>(null)
-  const streamHistoryPollTimer = useRef<number | null>(null)
-  const streamActiveRunsRef = useRef(new Set<string>())
   const streamReconnectAttempt = useRef(0)
   const streamRunSeqRef = useRef(new Map<string, number>())
   const streamRunStateVersionRef = useRef(new Map<string, number>())
@@ -68,59 +65,10 @@ export function useChatStream({
       streamSourceRef.current.close()
       streamSourceRef.current = null
     }
-    if (streamAgentRefreshTimer.current) {
-      window.clearTimeout(streamAgentRefreshTimer.current)
-      streamAgentRefreshTimer.current = null
-    }
-    if (streamHistoryPollTimer.current) {
-      window.clearInterval(streamHistoryPollTimer.current)
-      streamHistoryPollTimer.current = null
-    }
-    streamActiveRunsRef.current.clear()
     streamRunSeqRef.current.clear()
     streamRunStateVersionRef.current.clear()
     streamRunSourceRef.current.clear()
     streamSeenEventKeysRef.current.clear()
-  }, [])
-
-  const scheduleHistoryRefresh = useCallback(() => {
-    if (streamAgentRefreshTimer.current) return
-    streamAgentRefreshTimer.current = window.setTimeout(() => {
-      streamAgentRefreshTimer.current = null
-      refreshHistoryRef.current()
-    }, 500)
-  }, [])
-
-  const ensureHistoryPolling = useCallback(() => {
-    if (streamHistoryPollTimer.current) return
-    streamHistoryPollTimer.current = window.setInterval(() => {
-      if (streamActiveRunsRef.current.size === 0) {
-        if (streamHistoryPollTimer.current) {
-          window.clearInterval(streamHistoryPollTimer.current)
-          streamHistoryPollTimer.current = null
-        }
-        return
-      }
-      refreshHistoryRef.current()
-    }, 800)
-  }, [])
-
-  const markRunActive = useCallback(
-    (runId: string) => {
-      if (!runId) return
-      streamActiveRunsRef.current.add(runId)
-      ensureHistoryPolling()
-    },
-    [ensureHistoryPolling],
-  )
-
-  const markRunDone = useCallback((runId: string) => {
-    if (!runId) return
-    streamActiveRunsRef.current.delete(runId)
-    if (streamActiveRunsRef.current.size === 0 && streamHistoryPollTimer.current) {
-      window.clearInterval(streamHistoryPollTimer.current)
-      streamHistoryPollTimer.current = null
-    }
   }, [])
 
   useEffect(() => {
@@ -170,7 +118,6 @@ export function useChatStream({
                 : extractChatPayloadsFromAgentPayload(parsed.payload)
 
             if (parsed.event === 'agent' && payloads.length === 0) {
-              scheduleHistoryRefresh()
               return
             }
 
@@ -242,10 +189,7 @@ export function useChatStream({
                 payloadState === 'error' ||
                 payloadState === 'aborted'
               ) {
-                markRunDone(streamRunId)
                 refreshHistoryRef.current()
-              } else if (payloadState === 'delta') {
-                markRunActive(streamRunId)
               }
             if (payload.message && typeof payload.message === 'object') {
               const payloadSessionKey = payload.sessionKey
@@ -267,7 +211,6 @@ export function useChatStream({
                   streamRunId &&
                   (state === 'final' || state === 'error' || state === 'aborted')
                 ) {
-                  markRunDone(streamRunId)
                   streamRunSeqRef.current.delete(streamRunId)
                   streamRunStateVersionRef.current.delete(streamRunId)
                   streamRunSourceRef.current.delete(streamRunId)

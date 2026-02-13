@@ -43,6 +43,7 @@ import { useChatRedirect } from './hooks/use-chat-redirect'
 import type { AttachmentFile } from '@/components/attachment-button'
 import type { ChatComposerHelpers } from './components/chat-composer'
 import { useExport } from '@/hooks/use-export'
+import { useChatSettings } from '@/hooks/use-chat-settings'
 import { cn } from '@/lib/utils'
 
 type ChatScreenProps = {
@@ -75,6 +76,7 @@ export function ChatScreen({
   const [pinToTop, setPinToTop] = useState(
     () => hasPendingSend() || hasPendingGeneration(),
   )
+  const { settings } = useChatSettings()
   const pendingRunIdsRef = useRef(new Set<string>())
   const pendingRunTimersRef = useRef(new Map<string, number>())
   const { isMobile } = useChatMobile(queryClient)
@@ -267,7 +269,7 @@ export function ChatScreen({
         sessionKey,
         friendlyId,
         message: body,
-        thinking: 'high',
+        thinking: settings.thinkingLevel,
         idempotencyKey: crypto.randomUUID(),
         attachments: attachmentsPayload,
       }),
@@ -415,6 +417,7 @@ export function ChatScreen({
       onSessionResolved,
       queryClient,
       resolvedSessionKey,
+      settings.thinkingLevel,
     ],
   )
 

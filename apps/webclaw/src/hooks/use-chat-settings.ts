@@ -3,10 +3,12 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
 export type ThemeMode = 'system' | 'light' | 'dark'
+export type ThinkingLevel = 'low' | 'medium' | 'high'
 
 export type ChatSettings = {
   showToolMessages: boolean
   showReasoningBlocks: boolean
+  thinkingLevel: ThinkingLevel
   theme: ThemeMode
 }
 
@@ -21,6 +23,7 @@ export const useChatSettingsStore = create<ChatSettingsState>()(
       settings: {
         showToolMessages: true,
         showReasoningBlocks: true,
+        thinkingLevel: 'medium',
         theme: 'system',
       },
       updateSettings: (updates) =>
