@@ -6,7 +6,7 @@ import {
   Sun01Icon,
 } from '@hugeicons/core-free-icons'
 import type { PathsPayload } from '../types'
-import type { ThemeMode } from '@/hooks/use-chat-settings'
+import type { ThemeMode, ThinkingLevel } from '@/hooks/use-chat-settings'
 import {
   DialogClose,
   DialogContent,
@@ -74,6 +74,11 @@ export function SettingsDialog({
     { value: 'system', label: 'System', icon: ComputerIcon },
     { value: 'light', label: 'Light', icon: Sun01Icon },
     { value: 'dark', label: 'Dark', icon: Moon01Icon },
+  ] as const
+  const thinkingOptions = [
+    { value: 'low', label: 'Low' },
+    { value: 'medium', label: 'Medium' },
+    { value: 'high', label: 'High' },
   ] as const
   function applyTheme(theme: ThemeMode) {
     if (typeof document === 'undefined') return
@@ -169,6 +174,25 @@ export function SettingsDialog({
                   updateSettings({ showReasoningBlocks: checked })
                 }
               />
+            </SettingsRow>
+            <SettingsRow label="Thinking level">
+              <Tabs
+                value={settings.thinkingLevel}
+                onValueChange={(value) => {
+                  updateSettings({ thinkingLevel: value as ThinkingLevel })
+                }}
+              >
+                <TabsList
+                  variant="default"
+                  className="gap-2 *:data-[slot=tab-indicator]:duration-0"
+                >
+                  {thinkingOptions.map((option) => (
+                    <TabsTab key={option.value} value={option.value}>
+                      <span>{option.label}</span>
+                    </TabsTab>
+                  ))}
+                </TabsList>
+              </Tabs>
             </SettingsRow>
           </SettingsSection>
 

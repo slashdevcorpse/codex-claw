@@ -5,7 +5,11 @@ import {
   textFromMessage,
 } from '../utils'
 import { MessageActionsBar } from './message-actions-bar'
-import type { GatewayMessage, ToolCallContent } from '../types'
+import type {
+  GatewayMessage,
+  MessageContent as MessageContentPart,
+  ToolCallContent,
+} from '../types'
 import type { ToolPart } from '@/components/prompt-kit/tool'
 import { Message, MessageContent } from '@/components/prompt-kit/message'
 import { Thinking } from '@/components/prompt-kit/thinking'
@@ -38,20 +42,90 @@ function mapToolCallToToolPart(
     state = 'output-available'
   }
 
+  const resultText = toolResultText(resultMessage)
+
   // Extract error text from result message content
   let errorText: string | undefined
-  if (isError && resultMessage?.content?.[0]?.type === 'text') {
-    errorText = resultMessage.content[0].text || 'Unknown error'
+  if (isError) {
+    errorText = resultText || 'Unknown error'
   }
+
+  const output =
+    resultMessage?.details && typeof resultMessage.details === 'object'
+      ? resultMessage.details
+      : resultText
+        ? { text: resultText }
+        : undefined
 
   return {
     type: toolCall.name || 'unknown',
     state,
     input: toolCall.arguments,
-    output: resultMessage?.details,
+    output,
     toolCallId: toolCall.id,
     errorText,
   }
+}
+
+function toolResultText(resultMessage: GatewayMessage | undefined): string {
+  if (!resultMessage) return ''
+  const content = Array.isArray(resultMessage.content) ? resultMessage.content : []
+  return content
+    .map((part) => (part.type === 'text' ? String(part.text ?? '') : ''))
+    .join('')
+    .trim()
+}
+
+export function mapStandaloneToolResultToToolPart(message: GatewayMessage): ToolPart {
+  const isError = Boolean(message.isError)
+  const text = toolResultText(message)
+  const output =
+    message.details && typeof message.details === 'object'
+      ? message.details
+      : text
+        ? { text }
+        : undefined
+
+  return {
+    type:
+      typeof message.toolName === 'string' && message.toolName.trim().length > 0
+        ? message.toolName
+        : 'tool',
+    state: isError ? 'output-error' : 'output-available',
+    output,
+    toolCallId:
+      typeof message.toolCallId === 'string' ? message.toolCallId : undefined,
+    errorText: isError ? text || 'Unknown error' : undefined,
+  }
+}
+
+export function assistantPartRenderOrder(
+  message: GatewayMessage,
+  showReasoningBlocks: boolean,
+  showToolMessages: boolean,
+): Array<'thinking' | 'text' | 'toolCall'> {
+  const content = Array.isArray(message.content) ? message.content : []
+  const order: Array<'thinking' | 'text' | 'toolCall'> = []
+  for (const part of content) {
+    if (part.type === 'thinking') {
+      const thinking = String(part.thinking ?? '').trim()
+      if (showReasoningBlocks && thinking) {
+        order.push('thinking')
+      }
+      continue
+    }
+    if (part.type === 'text') {
+      const text = String(part.text ?? '').trim()
+      if (text) {
+        order.push('text')
+      }
+      continue
+    }
+    if (showToolMessages) {
+      order.push('toolCall')
+    }
+  }
+  return order
 }
 
 function toolCallsSignature(message: GatewayMessage): string {
@@ -174,14 +248,49 @@ function MessageItemComponent({
   const { settings } = useChatSettings()
   const role = message.role || 'assistant'
   const text = textFromMessage(message)
-  const thinking = thinkingFromMessage(message)
   const images = imagesFromMessage(message)
   const isUser = role === 'user'
+  const isToolResult = role === 'toolResult'
+  const isAssistant = role === 'assistant'
   const timestamp = getMessageTimestamp(message)
+  const standaloneToolPart = isToolResult
+    ? mapStandaloneToolResultToToolPart(message)
+    : null
 
-  // Get tool calls from this message (for assistant messages)
-  const toolCalls = role === 'assistant' ? getToolCallsFromMessage(message) : []
-  const hasToolCalls = toolCalls.length > 0
+  const assistantParts = Array.isArray(message.content) ? message.content : []
+
+  function renderAssistantPart(part: MessageContentPart, index: number) {
+    if (part.type === 'thinking') {
+      const thinking = String(part.thinking ?? '')
+      if (!thinking || !settings.showReasoningBlocks) return null
+      return (
+        <div key={`thinking-${index}`} className="w-full max-w-[900px]">
+          <Thinking content={thinking} />
+        </div>
+      )
+    }
+
+    if (part.type === 'text') {
+      const chunk = String(part.text ?? '')
+      if (!chunk.trim()) return null
+      return (
+        <Message key={`text-${index}`}>
+          <MessageContent markdown className="text-primary-900 bg-transparent w-full">
+            {chunk}
+          </MessageContent>
+        </Message>
+      )
+    }
+
+    if (!settings.showToolMessages) return null
+    const resultMessage = part.id ? toolResultsByCallId?.get(part.id) : undefined
+    const toolPart = mapToolCallToToolPart(part, resultMessage)
+    return (
+      <div key={`tool-${part.id || index}`} className="w-full max-w-[900px] mt-1">
+        <Tool toolPart={toolPart} defaultOpen={false} />
+      </div>
+    )
+  }
 
   return (
     <div
@@ -197,17 +306,9 @@ function MessageItemComponent({
         isUser ? 'items-end' : 'items-start',
       )}
     >
-      {thinking && settings.showReasoningBlocks && (
-        <div className="w-full max-w-[900px]">
-          <Thinking content={thinking} />
-        </div>
-      )}
       {/* Render images if present */}
-      {images.length > 0 && (
-        <div className={cn(
-          'flex flex-wrap gap-2 mb-2',
-          isUser ? 'justify-end' : 'justify-start'
-        )}>
+      {isUser && images.length > 0 && (
+        <div className={cn('flex flex-wrap gap-2 mb-2', 'justify-end')}>
           {images.map((img, idx) => (
             <img
               key={idx}
@@ -218,45 +319,39 @@ function MessageItemComponent({
           ))}
         </div>
       )}
-      <Message className={cn(isUser ? 'flex-row-reverse' : '')}>
-        <MessageContent
-          markdown={!isUser}
-          className={cn(
-            'text-primary-900',
-            !isUser
-              ? 'bg-transparent w-full'
-              : 'bg-primary-100 px-4 py-2.5 max-w-[85%]',
-          )}
-        >
-          {text}
-        </MessageContent>
-      </Message>
+      {isUser && (
+        <Message className="flex-row-reverse">
+          <MessageContent
+            markdown={false}
+            className={cn('text-primary-900', 'bg-primary-100 px-4 py-2.5 max-w-[85%]')}
+          >
+            {text}
+          </MessageContent>
+        </Message>
+      )}
 
-      {/* Render tool calls with their results */}
-      {hasToolCalls && settings.showToolMessages && (
+      {isToolResult && settings.showToolMessages && standaloneToolPart && (
         <div className="w-full max-w-[900px] mt-2 flex flex-col gap-3">
-          {toolCalls.map((toolCall) => {
-            const resultMessage = toolCall.id
-              ? toolResultsByCallId?.get(toolCall.id)
-              : undefined
-            const toolPart = mapToolCallToToolPart(toolCall, resultMessage)
-
-            return (
-              <Tool
-                key={toolCall.id || toolCall.name}
-                toolPart={toolPart}
-                defaultOpen={false}
-              />
-            )
-          })}
+          <Tool toolPart={standaloneToolPart} defaultOpen={false} />
         </div>
       )}
 
-      {!hasToolCalls && (
+      {isAssistant && assistantParts.map(renderAssistantPart)}
+
+      {isAssistant && (
         <MessageActionsBar
           text={text}
           timestamp={timestamp}
-          align={isUser ? 'end' : 'start'}
+          align="start"
+          forceVisible={forceActionsVisible}
+        />
+      )}
+
+      {isUser && (
+        <MessageActionsBar
+          text={text}
+          timestamp={timestamp}
+          align="end"
           forceVisible={forceActionsVisible}
         />
       )}
@@ -302,6 +397,13 @@ function areMessagesEqual(
   if (
     toolResultsSignature(prevProps.message, prevProps.toolResultsByCallId) !==
     toolResultsSignature(nextProps.message, nextProps.toolResultsByCallId)
+  ) {
+    return false
+  }
+  if (
+    (prevProps.message.role === 'toolResult' ||
+      nextProps.message.role === 'toolResult') &&
+    toolResultSignature(prevProps.message) !== toolResultSignature(nextProps.message)
   ) {
     return false
   }

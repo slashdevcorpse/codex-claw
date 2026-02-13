@@ -7,7 +7,7 @@ import {
   updateSessionLastMessage,
 } from '../chat-queries'
 import type { QueryClient } from '@tanstack/react-query'
-import type { GatewayMessage } from '../types'
+import type { GatewayMessage, MessageContent } from '../types'
 
 type UseChatStreamInput = {
   activeFriendlyId: string
@@ -25,6 +25,14 @@ type UseChatStreamInput = {
   }) => void
 }
 
+type StreamChatPayload = {
+  runId?: string
+  sessionKey?: string
+  state?: string
+  message?: GatewayMessage
+  seq?: number
+}
+
 export function useChatStream({
   activeFriendlyId,
   isNewChat,
@@ -38,7 +46,10 @@ export function useChatStream({
   const streamSourceRef = useRef<EventSource | null>(null)
   const streamReconnectTimer = useRef<number | null>(null)
   const streamReconnectAttempt = useRef(0)
-  const streamRunTextRef = useRef(new Map<string, string>())
+  const streamRunSeqRef = useRef(new Map<string, number>())
+  const streamRunStateVersionRef = useRef(new Map<string, number>())
+  const streamRunSourceRef = useRef(new Map<string, 'agent' | 'chat'>())
+  const streamSeenEventKeysRef = useRef(new Set<string>())
   const refreshHistoryRef = useRef(refreshHistory)
 
   useEffect(() => {
@@ -54,7 +65,10 @@ export function useChatStream({
       streamSourceRef.current.close()
       streamSourceRef.current = null
     }
-    streamRunTextRef.current.clear()
+    streamRunSeqRef.current.clear()
+    streamRunStateVersionRef.current.clear()
+    streamRunSourceRef.current.clear()
+    streamSeenEventKeysRef.current.clear()
   }, [])
 
   useEffect(() => {
@@ -79,6 +93,8 @@ export function useChatStream({
           const parsed = JSON.parse(String(event.data || '{}')) as {
             event?: string
             payload?: unknown
+            seq?: unknown
+            stateVersion?: unknown
           }
           if (parsed.event === 'chat.history') {
             const payload = parsed.payload as { messages?: Array<unknown> } | null
@@ -95,19 +111,87 @@ export function useChatStream({
             return
           }
           if (!parsed.event) return
-          if (parsed.event === 'chat') {
-            const payload = parsed.payload as
-              | {
-                  runId?: string
-                  sessionKey?: string
-                  state?: string
-                  message?: GatewayMessage
-                }
-              | null
-            if (payload) {
-              onChatEvent?.(payload)
+          if (parsed.event === 'chat' || parsed.event === 'agent') {
+            const payloads: Array<StreamChatPayload | null> =
+              parsed.event === 'chat'
+                ? [parsed.payload as StreamChatPayload | null]
+                : extractChatPayloadsFromAgentPayload(parsed.payload)
+
+            if (parsed.event === 'agent' && payloads.length === 0) {
+              return
             }
-            if (payload?.message && typeof payload.message === 'object') {
+
+            for (const payload of payloads) {
+              if (!payload) continue
+              const streamRunId =
+                typeof payload.runId === 'string' ? payload.runId : ''
+              const payloadSource: 'agent' | 'chat' =
+                parsed.event === 'agent' ? 'agent' : 'chat'
+              if (streamRunId) {
+                const currentSource = streamRunSourceRef.current.get(streamRunId)
+                if (
+                  payloadSource === 'chat' &&
+                  currentSource === 'agent' &&
+                  payload.state === 'delta'
+                ) {
+                  continue
+                }
+                if (payloadSource === 'agent' || !currentSource) {
+                  streamRunSourceRef.current.set(streamRunId, payloadSource)
+                }
+              }
+
+              const payloadSeq =
+                typeof payload.seq === 'number' && Number.isFinite(payload.seq)
+                  ? payload.seq
+                  : undefined
+              const eventSeq =
+                payloadSource === 'agent'
+                  ? payloadSeq
+                  : typeof parsed.seq === 'number' && Number.isFinite(parsed.seq)
+                    ? parsed.seq
+                    : undefined
+              const eventStateVersion =
+                typeof parsed.stateVersion === 'number' &&
+                Number.isFinite(parsed.stateVersion)
+                  ? parsed.stateVersion
+                  : undefined
+
+              if (
+                shouldSkipDuplicateEvent(
+                  streamSeenEventKeysRef.current,
+                  payloadSource,
+                  streamRunId,
+                  payload.state,
+                  eventSeq,
+                )
+              ) {
+                continue
+              }
+
+            if (
+              shouldSkipStaleRunEvent(
+                streamRunId,
+                eventSeq,
+                eventStateVersion,
+                streamRunSeqRef.current,
+                streamRunStateVersionRef.current,
+              )
+            ) {
+              continue
+            }
+
+            onChatEvent?.(payload)
+            const payloadState =
+              typeof payload.state === 'string' ? payload.state : ''
+              if (
+                payloadState === 'final' ||
+                payloadState === 'error' ||
+                payloadState === 'aborted'
+              ) {
+                refreshHistoryRef.current()
+              }
+            if (payload.message && typeof payload.message === 'object') {
               const payloadSessionKey = payload.sessionKey
               if (
                 payloadSessionKey &&
@@ -115,49 +199,22 @@ export function useChatStream({
                 payloadSessionKey !== resolvedSessionKey &&
                 payloadSessionKey !== sessionKeyForHistory
               ) {
-                return
+                continue
               }
-              const streamRunId =
-                typeof payload.runId === 'string' ? payload.runId : ''
               const state = typeof payload.state === 'string' ? payload.state : ''
-              let nextMessage: GatewayMessage = {
+              const nextMessage: GatewayMessage = {
                 ...payload.message,
                 __streamRunId: streamRunId || undefined,
               }
 
-              if (streamRunId && state === 'delta') {
-                const deltaText = rawTextFromMessage(nextMessage)
-                const previousText = streamRunTextRef.current.get(streamRunId) ?? ''
-                const cumulativeText = mergeDeltaText(previousText, deltaText)
-                if (cumulativeText.length > 0) {
-                  streamRunTextRef.current.set(streamRunId, cumulativeText)
-                  nextMessage = {
-                    ...nextMessage,
-                    content: [{ type: 'text', text: cumulativeText }],
-                  }
+                if (
+                  streamRunId &&
+                  (state === 'final' || state === 'error' || state === 'aborted')
+                ) {
+                  streamRunSeqRef.current.delete(streamRunId)
+                  streamRunStateVersionRef.current.delete(streamRunId)
+                  streamRunSourceRef.current.delete(streamRunId)
                 }
-              }
-
-              if (streamRunId && state === 'final') {
-                const finalText = rawTextFromMessage(nextMessage)
-                if (!finalText) {
-                  const bufferedText = streamRunTextRef.current.get(streamRunId)
-                  if (bufferedText) {
-                    nextMessage = {
-                      ...nextMessage,
-                      content: [{ type: 'text', text: bufferedText }],
-                    }
-                  }
-                }
-                streamRunTextRef.current.delete(streamRunId)
-              }
-
-              if (
-                streamRunId &&
-                (state === 'error' || state === 'aborted')
-              ) {
-                streamRunTextRef.current.delete(streamRunId)
-              }
 
               function upsert(messages: Array<GatewayMessage>) {
                 const lastUserIndex = [...messages]
@@ -167,15 +224,15 @@ export function useChatStream({
                   lastUserIndex >= 0 ? messages.length - 1 - lastUserIndex : -1
 
                 if (streamRunId) {
-                  const index = messages.findIndex(
-                    (message) =>
-                      (message as { __streamRunId?: string }).__streamRunId ===
-                      streamRunId,
+                  const index = findStreamMessageIndex(
+                    messages,
+                    nextMessage,
+                    streamRunId,
                   )
                   if (index >= 0) {
                     if (index > resolvedLastUserIndex) {
                       const next = [...messages]
-                      next[index] = nextMessage
+                      next[index] = mergeStreamMessage(messages[index], nextMessage)
                       return next
                     }
                     return [...messages, nextMessage]
@@ -192,7 +249,7 @@ export function useChatStream({
                       const targetTime = getMessageTimestamp(messages[target])
                       if (Math.abs(nextTime - targetTime) <= 15000) {
                         const next = [...messages]
-                        next[target] = nextMessage
+                        next[target] = mergeStreamMessage(messages[target], nextMessage)
                         return next
                       }
                     }
@@ -228,6 +285,7 @@ export function useChatStream({
                   nextMessage,
                 )
               }
+            }
             }
             return
           }
@@ -282,17 +340,297 @@ export function useChatStream({
   return { stopStream }
 }
 
-function rawTextFromMessage(message: GatewayMessage): string {
-  const parts = Array.isArray(message.content) ? message.content : []
-  return parts
-    .map((part) => (part.type === 'text' ? String(part.text ?? '') : ''))
-    .join('')
+function mergeStreamMessage(
+  previousMessage: GatewayMessage,
+  nextMessage: GatewayMessage,
+): GatewayMessage {
+  const previousContent = Array.isArray(previousMessage.content)
+    ? previousMessage.content
+    : []
+  const nextContent = Array.isArray(nextMessage.content) ? nextMessage.content : []
+
+  if (previousContent.length === 0) {
+    return nextMessage
+  }
+
+  if (nextContent.length === 0) {
+    return { ...previousMessage, ...nextMessage }
+  }
+
+  return {
+    ...previousMessage,
+    ...nextMessage,
+    content: mergeMessageContent(previousContent, nextContent),
+  }
 }
 
-function mergeDeltaText(previousText: string, nextText: string): string {
-  if (!previousText) return nextText
-  if (!nextText) return previousText
-  if (nextText.startsWith(previousText)) return nextText
-  if (previousText.endsWith(nextText)) return previousText
-  return `${previousText}${nextText}`
+function mergeMessageContent(
+  previousContent: Array<MessageContent>,
+  nextContent: Array<MessageContent>,
+): Array<MessageContent> {
+  const mergedByIdentity = new Map<string, MessageContent>()
+  const orderedKeys: Array<string> = []
+
+  function upsertPart(part: MessageContent) {
+    const identity = partIdentity(part)
+    if (!mergedByIdentity.has(identity)) {
+      orderedKeys.push(identity)
+    }
+    mergedByIdentity.set(identity, part)
+  }
+
+  for (const part of previousContent) {
+    upsertPart(part)
+  }
+  for (const part of nextContent) {
+    upsertPart(part)
+  }
+
+  return orderedKeys
+    .map((key) => mergedByIdentity.get(key))
+    .filter((part): part is MessageContent => Boolean(part))
+}
+
+function partIdentity(part: MessageContent): string {
+  switch (part.type) {
+    case 'text':
+      return 'text'
+    case 'thinking':
+      return 'thinking'
+    case 'toolCall': {
+      const toolCallId = normalizeString((part as { id?: unknown }).id)
+      const toolName = normalizeString((part as { name?: unknown }).name)
+      if (toolCallId || toolName) {
+        return `toolCall:${toolCallId}:${toolName}`
+      }
+      return `toolCall:${JSON.stringify(part)}`
+    }
+    default:
+      return 'unknown'
+  }
+}
+
+function shouldSkipStaleRunEvent(
+  runId: string,
+  seq: number | undefined,
+  stateVersion: number | undefined,
+  runSeqMap: Map<string, number>,
+  runStateVersionMap: Map<string, number>,
+): boolean {
+  if (!runId) return false
+
+  if (typeof seq === 'number') {
+    const previousSeq = runSeqMap.get(runId)
+    if (typeof previousSeq === 'number' && seq <= previousSeq) {
+      return true
+    }
+    runSeqMap.set(runId, seq)
+  }
+
+  if (typeof stateVersion === 'number') {
+    const previousStateVersion = runStateVersionMap.get(runId)
+    if (
+      typeof previousStateVersion === 'number' &&
+      stateVersion < previousStateVersion
+    ) {
+      return true
+    }
+    runStateVersionMap.set(runId, stateVersion)
+  }
+
+  return false
+}
+
+function findStreamMessageIndex(
+  messages: Array<GatewayMessage>,
+  targetMessage: GatewayMessage,
+  streamRunId: string,
+): number {
+  const targetId = getMessageId(targetMessage)
+  if (targetId) {
+    const byId = messages.findIndex((message) => getMessageId(message) === targetId)
+    if (byId >= 0) return byId
+  }
+
+  const targetRole = normalizeString(targetMessage.role)
+  const targetToolCallId = normalizeString(targetMessage.toolCallId)
+  let index = -1
+  messages.forEach((message, currentIndex) => {
+    const runId = normalizeString((message as { __streamRunId?: unknown }).__streamRunId)
+    if (!runId || runId !== streamRunId) return
+    if (normalizeString(message.role) !== targetRole) return
+    const messageToolCallId = normalizeString(message.toolCallId)
+    if (targetToolCallId || messageToolCallId) {
+      if (targetToolCallId !== messageToolCallId) return
+    }
+    index = currentIndex
+  })
+  return index
+}
+
+function getMessageId(message: GatewayMessage): string {
+  return normalizeString((message as { id?: unknown }).id)
+}
+
+function normalizeString(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function shouldSkipDuplicateEvent(
+  seen: Set<string>,
+  source: 'agent' | 'chat',
+  runId: string,
+  state: string | undefined,
+  seq: number | undefined,
+): boolean {
+  if (!runId || typeof seq !== 'number') return false
+  const key = `${source}:${runId}:${state ?? ''}:${seq}`
+  if (seen.has(key)) return true
+  seen.add(key)
+  if (seen.size > 4000) {
+    seen.clear()
+  }
+  return false
+}
+
+function extractChatPayloadsFromAgentPayload(
+  payload: unknown,
+): Array<StreamChatPayload | null> {
+  if (!payload || typeof payload !== 'object') return []
+  const value = payload as Record<string, unknown>
+  const runId = normalizeString(value.runId)
+  const sessionKey = normalizeString(value.sessionKey)
+  const stream = normalizeString(value.stream)
+  const seq =
+    typeof value.seq === 'number' && Number.isFinite(value.seq)
+      ? value.seq
+      : undefined
+  const data =
+    value.data && typeof value.data === 'object'
+      ? (value.data as Record<string, unknown>)
+      : null
+
+  if (stream === 'assistant') {
+    const text =
+      normalizeString(data?.text) || normalizeString(data?.delta) || ''
+    if (!text) return []
+    return [
+      {
+        runId,
+        sessionKey,
+        state: 'delta',
+        seq,
+        message: {
+          role: 'assistant',
+          content: [{ type: 'text', text }],
+        },
+      },
+    ]
+  }
+
+  if (stream === 'thinking') {
+    const thinking =
+      normalizeString(data?.thinking) || normalizeString(data?.text) || ''
+    if (!thinking) return []
+    return [
+      {
+        runId,
+        sessionKey,
+        state: 'delta',
+        seq,
+        message: {
+          role: 'assistant',
+          content: [{ type: 'thinking', thinking }],
+        },
+      },
+    ]
+  }
+
+  if (stream === 'lifecycle') {
+    const phase = normalizeString(data?.phase)
+    if (phase === 'end') {
+      return [
+        {
+          runId,
+          sessionKey,
+          state: 'final',
+          seq,
+        },
+      ]
+    }
+    return []
+  }
+
+  if (stream.includes('tool')) {
+    const toolCallId =
+      normalizeString(data?.toolCallId) ||
+      normalizeString(data?.id) ||
+      normalizeString(data?.callId)
+    const toolName =
+      normalizeString(data?.toolName) || normalizeString(data?.name)
+
+    if (stream.includes('call')) {
+      const partialJson = normalizeString(data?.partialJson)
+      const input =
+        data && typeof data.input === 'object'
+          ? (data.input as Record<string, unknown>)
+          : data && typeof data.arguments === 'object'
+            ? (data.arguments as Record<string, unknown>)
+            : undefined
+
+      return [
+        {
+          runId,
+          sessionKey,
+          state: 'delta',
+          seq,
+          message: {
+            role: 'assistant',
+            content: [
+              {
+                type: 'toolCall',
+                id: toolCallId || undefined,
+                name: toolName || undefined,
+                partialJson: partialJson || undefined,
+                arguments: input,
+              },
+            ],
+          },
+        },
+      ]
+    }
+
+    if (stream.includes('result') || stream.includes('output')) {
+      const output = data?.output
+      const errorText = normalizeString(data?.error)
+      return [
+        {
+          runId,
+          sessionKey,
+          state: 'delta',
+          seq,
+          message: {
+            role: 'toolResult',
+            toolCallId: toolCallId || undefined,
+            toolName: toolName || undefined,
+            details:
+              output && typeof output === 'object'
+                ? (output as Record<string, unknown>)
+                : undefined,
+            isError: Boolean(errorText),
+            content: [
+              {
+                type: 'text',
+                text: errorText || (typeof output === 'string' ? output : ''),
+              },
+            ],
+          },
+        },
+      ]
+    }
+
+    return []
+  }
+
+  return []
 }
