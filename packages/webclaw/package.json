@@ -5,7 +5,7 @@
   "description": "WebClaw CLI",
   "type": "module",
   "bin": {
-    "webclaw": "./bin/webclaw.js"
+    "webclaw": "bin/webclaw.js"
   },
   "files": [
     "bin",
