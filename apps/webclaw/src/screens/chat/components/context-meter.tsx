@@ -73,7 +73,7 @@ function ContextMeterComponent({ usedTokens, maxTokens }: ContextMeterProps) {
           </svg>
         </div>
       </PreviewCardTrigger>
-      <PreviewCardPopup align="end" sideOffset={8} className="w-52 px-2 py-1">
+      <PreviewCardPopup align="end" sideOffset={0} className="w-52 px-2 py-1">
         <div className="space-y-0.5 text-xs text-primary-900">
           <div className="text-primary-950 font-[450]">Context window:</div>
           <div className="tabular-nums text-primary-700">

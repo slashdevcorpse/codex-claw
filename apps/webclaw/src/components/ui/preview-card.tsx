@@ -14,6 +14,8 @@ function PreviewCardTrigger({ className, ...props }: PreviewCardTriggerProps) {
     <PreviewCardPrimitive.Trigger
       className={cn(className)}
       data-slot="preview-card-trigger"
+      delay={0}
+      closeDelay={0}
       {...props}
     />
   )
