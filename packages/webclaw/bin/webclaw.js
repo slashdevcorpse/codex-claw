@@ -5,10 +5,20 @@ import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
+import readline from 'node:readline/promises'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const REPO_URL = 'https://github.com/ibelick/webclaw'
+
+function printBanner() {
+  process.stdout.write(`              ▄▄          ▄▄               \n`)
+  process.stdout.write(`              ██          ██               \n`)
+  process.stdout.write(`██   ██ ▄█▀█▄ ████▄ ▄████ ██  ▀▀█▄ ██   ██ \n`)
+  process.stdout.write(`██ █ ██ ██▄█▀ ██ ██ ██    ██ ▄█▀██ ██ █ ██ \n`)
+  process.stdout.write(` ██▀██  ▀█▄▄▄ ████▀ ▀████ ██ ▀█▄██  ██▀██ \n\n`)
+  process.stdout.write(`Fast web client for OpenClaw\n\n`)
+}
 
 function printHelp() {
   process.stdout.write(`webclaw CLI\n\n`)
@@ -23,6 +33,7 @@ function printHelp() {
   process.stdout.write(`  webclaw doctor          Validate local setup\n`)
   process.stdout.write(`\nOptions:\n`)
   process.stdout.write(`  --force                 Allow init in non-empty directory\n`)
+  process.stdout.write(`  --skip-env              Skip .env.local setup prompts\n`)
   process.stdout.write(`  -h, --help              Show help\n`)
 }
 
@@ -121,7 +132,78 @@ function cloneRepo(targetDir) {
   runCommand('git', ['clone', '--depth', '1', REPO_URL, targetDir], process.cwd())
 }
 
-function initProject(rawTarget, options) {
+function resolveEnvFile(targetDir) {
+  const monorepoEnv = path.join(targetDir, 'apps', 'webclaw', '.env.local')
+  if (fs.existsSync(path.join(targetDir, 'apps', 'webclaw'))) {
+    return monorepoEnv
+  }
+  return path.join(targetDir, '.env.local')
+}
+
+async function askQuestion(rl, question) {
+  const answer = await rl.question(question)
+  return answer.trim()
+}
+
+async function maybeSetupEnv(targetDir, options) {
+  if (options.has('--skip-env')) return
+  if (!process.stdin.isTTY || !process.stdout.isTTY) return
+
+  const envFile = resolveEnvFile(targetDir)
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  })
+
+  try {
+    const createAnswer = await askQuestion(
+      rl,
+      `Create ${envFile} now? [Y/n]: `,
+    )
+    const shouldCreate =
+      createAnswer.length === 0 ||
+      createAnswer.toLowerCase() === 'y' ||
+      createAnswer.toLowerCase() === 'yes'
+
+    if (!shouldCreate) {
+      process.stdout.write(
+        `Skipping env file. Create it later at ${envFile} with:\n` +
+          `CLAWDBOT_GATEWAY_URL=...\n` +
+          `CLAWDBOT_GATEWAY_TOKEN=...\n\n`,
+      )
+      return
+    }
+
+    if (fs.existsSync(envFile)) {
+      const overwriteAnswer = await askQuestion(
+        rl,
+        `${envFile} already exists. Overwrite? [y/N]: `,
+      )
+      const shouldOverwrite =
+        overwriteAnswer.toLowerCase() === 'y' ||
+        overwriteAnswer.toLowerCase() === 'yes'
+      if (!shouldOverwrite) {
+        process.stdout.write(`Keeping existing ${envFile}\n\n`)
+        return
+      }
+    }
+
+    const gatewayUrl = await askQuestion(rl, 'CLAWDBOT_GATEWAY_URL: ')
+    const gatewayToken = await askQuestion(rl, 'CLAWDBOT_GATEWAY_TOKEN: ')
+
+    ensureDir(path.dirname(envFile))
+    fs.writeFileSync(
+      envFile,
+      `CLAWDBOT_GATEWAY_URL=${gatewayUrl}\nCLAWDBOT_GATEWAY_TOKEN=${gatewayToken}\n`,
+    )
+    process.stdout.write(`Wrote ${envFile}\n\n`)
+  } finally {
+    rl.close()
+  }
+}
+
+async function initProject(rawTarget, options) {
+  printBanner()
   const targetDir = path.resolve(process.cwd(), rawTarget ?? '.')
   const force = options.has('--force')
   const isCurrentDir = targetDir === process.cwd()
@@ -160,6 +242,8 @@ function initProject(rawTarget, options) {
     }
   }
 
+  await maybeSetupEnv(targetDir, options)
+
   process.stdout.write(`\nWebClaw project created at ${targetDir}\n\n`)
   process.stdout.write(`Next steps:\n`)
   process.stdout.write(`  cd ${path.relative(process.cwd(), targetDir) || '.'}\n`)
@@ -190,7 +274,7 @@ function doctor() {
   process.exit(1)
 }
 
-function main() {
+async function main() {
   const args = process.argv.slice(2)
   const options = new Set(args.filter((arg) => arg.startsWith('-')))
   const command = args.find((arg) => !arg.startsWith('-'))
@@ -201,7 +285,7 @@ function main() {
   }
 
   if (!command) {
-    initProject('.', options)
+    await initProject('.', options)
     return
   }
 
@@ -211,7 +295,7 @@ function main() {
       const previous = args[index - 1]
       return previous === 'init'
     })
-    initProject(target, options)
+    await initProject(target, options)
     return
   }
 
@@ -236,4 +320,9 @@ function main() {
   process.exit(1)
 }
 
-main()
+void main().catch((error) => {
+  process.stderr.write(
+    `${error instanceof Error ? error.message : String(error)}\n`,
+  )
+  process.exit(1)
+})
