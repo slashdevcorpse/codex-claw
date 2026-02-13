@@ -5,17 +5,6 @@ APP_DIR="webclaw"
 TRACKING_URL="https://collector.onedollarstats.com/events"
 EVENT_URL="https://webclaw.dev/install"
 
-cat <<'EOF'                                   
-              ▄▄          ▄▄               
-              ██          ██               
-██   ██ ▄█▀█▄ ████▄ ▄████ ██  ▀▀█▄ ██   ██ 
-██ █ ██ ██▄█▀ ██ ██ ██    ██ ▄█▀██ ██ █ ██ 
- ██▀██  ▀█▄▄▄ ████▀ ▀████ ██ ▀█▄██  ██▀██ 
-
-Fast web client for OpenClaw
-
-EOF
-
 function track_install() {
   if ! command -v curl >/dev/null 2>&1; then
     return
@@ -43,20 +32,11 @@ if ! command -v npm >/dev/null 2>&1; then
   exit 1
 fi
 
-if ! command -v pnpm >/dev/null 2>&1; then
-  echo "pnpm is required but not found."
-  echo "Install it with: corepack enable && corepack prepare pnpm@latest --activate"
-  exit 1
-fi
-
 if [ -d "$APP_DIR" ]; then
   echo "Directory '$APP_DIR' already exists. Skipping init."
 else
   npx webclaw init "$APP_DIR"
 fi
 
-cd "$APP_DIR"
-pnpm install
-
 echo ""
-echo "Next step: pnpm -C apps/webclaw dev"
+echo "Next step: cd $APP_DIR && pnpm install && pnpm -C apps/webclaw dev"
