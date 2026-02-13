@@ -267,7 +267,7 @@ export function ChatScreen({
         sessionKey,
         friendlyId,
         message: body,
-        thinking: 'low',
+        thinking: 'high',
         idempotencyKey: crypto.randomUUID(),
         attachments: attachmentsPayload,
       }),

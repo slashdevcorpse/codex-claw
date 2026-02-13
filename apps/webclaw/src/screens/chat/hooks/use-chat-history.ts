@@ -93,7 +93,8 @@ export function useChatHistory({
     const lastId = typeof last?.id === 'string' ? last.id : ''
     const lastRole = typeof last?.role === 'string' ? last.role : ''
     const lastText = last ? textFromMessage(last) : ''
-    const signature = `${messages.length}:${lastRole}:${lastId}:${lastText.slice(-32)}`
+    const lastContentSignature = last ? contentSignatureFromMessage(last) : ''
+    const signature = `${messages.length}:${lastRole}:${lastId}:${lastText.slice(-32)}:${lastContentSignature}`
     if (signature === stableHistorySignatureRef.current) {
       return stableHistoryMessagesRef.current
     }
@@ -125,6 +126,24 @@ export function useChatHistory({
   }
 }
 
+function contentSignatureFromMessage(message: GatewayMessage): string {
+  const content = Array.isArray(message.content) ? message.content : []
+  return content
+    .map((part) => {
+      if (part.type === 'text') {
+        return `text:${String(part.text ?? '').length}`
+      }
+      if (part.type === 'thinking') {
+        return `thinking:${String(part.thinking ?? '').length}`
+      }
+      const id = 'id' in part ? String(part.id ?? '') : ''
+      const name = 'name' in part ? String(part.name ?? '') : ''
+      const partialJson = 'partialJson' in part ? String(part.partialJson ?? '') : ''
+      return `toolCall:${id}:${name}:${partialJson.length}`
+    })
+    .join('|')
+}
+
 function mergeStreamingHistoryMessages(
   serverMessages: Array<GatewayMessage>,
   streamingMessages: Array<GatewayMessage>,
@@ -139,20 +158,31 @@ function mergeStreamingHistoryMessages(
     const hasMatch = merged.some((serverMessage) => {
       const serverRunId = (serverMessage as { __streamRunId?: unknown })
         .__streamRunId
+
+      if (serverMessage.role !== streamingMessage.role) return false
+      const streamingTime = getMessageTimestamp(streamingMessage)
+      const serverTime = getMessageTimestamp(serverMessage)
+      if (Math.abs(streamingTime - serverTime) > 15000) return false
+
       if (
         typeof serverRunId === 'string' &&
         serverRunId.trim().length > 0 &&
         serverRunId === runId
       ) {
-        return true
+        return messageCoversStreamingMessage(serverMessage, streamingMessage)
       }
-      if (serverMessage.role !== streamingMessage.role) return false
+
       const streamingText = textFromMessage(streamingMessage)
-      if (!streamingText) return false
-      if (streamingText !== textFromMessage(serverMessage)) return false
-      const streamingTime = getMessageTimestamp(streamingMessage)
-      const serverTime = getMessageTimestamp(serverMessage)
-      return Math.abs(streamingTime - serverTime) <= 15000
+      const serverText = textFromMessage(serverMessage)
+      if (
+        streamingText &&
+        streamingText !== serverText &&
+        !serverText.startsWith(streamingText)
+      ) {
+        return false
+      }
+
+      return messageCoversStreamingMessage(serverMessage, streamingMessage)
     })
 
     if (!hasMatch) {
@@ -161,6 +191,37 @@ function mergeStreamingHistoryMessages(
   }
 
   return merged
+}
+
+function messageCoversStreamingMessage(
+  serverMessage: GatewayMessage,
+  streamingMessage: GatewayMessage,
+): boolean {
+  const serverSignatures = nonTextPartSignatures(serverMessage)
+  const streamingSignatures = nonTextPartSignatures(streamingMessage)
+  if (streamingSignatures.size === 0) return true
+
+  for (const signature of streamingSignatures) {
+    if (!serverSignatures.has(signature)) {
+      return false
+    }
+  }
+
+  return true
+}
+
+function nonTextPartSignatures(message: GatewayMessage): Set<string> {
+  const signatures = new Set<string>()
+  const parts = Array.isArray(message.content) ? message.content : []
+  for (const part of parts) {
+    if (part.type === 'text') continue
+    try {
+      signatures.add(`${part.type}:${JSON.stringify(part)}`)
+    } catch {
+      signatures.add(`${part.type}:unserializable`)
+    }
+  }
+  return signatures
 }
 
 function mergeOptimisticHistoryMessages(
