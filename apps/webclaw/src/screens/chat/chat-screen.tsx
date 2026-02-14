@@ -404,7 +404,10 @@ export function ChatScreen({
       }
 
       const sessionKeyForSend =
-        forcedSessionKey || resolvedSessionKey || activeSessionKey
+        forcedSessionKey ||
+        resolvedSessionKey ||
+        activeSessionKey ||
+        activeFriendlyId
       sendMessage(sessionKeyForSend, activeFriendlyId, body, false, attachments)
     },
     [
