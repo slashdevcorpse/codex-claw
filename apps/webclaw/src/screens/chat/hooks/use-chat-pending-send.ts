@@ -19,7 +19,6 @@ type UseChatPendingSendInput = {
   resolvedSessionKey: string
   setWaitingForResponse: (value: boolean) => void
   setPinToTop: (value: boolean) => void
-  streamStop: () => void
   sendMessage: (
     sessionKey: string,
     friendlyId: string,
@@ -38,7 +37,6 @@ export function useChatPendingSend({
   resolvedSessionKey,
   setWaitingForResponse,
   setPinToTop,
-  streamStop,
   sendMessage,
 }: UseChatPendingSendInput) {
   const pendingStartRef = useRef(false)
@@ -53,9 +51,8 @@ export function useChatPendingSend({
       setPinToTop(true)
       return
     }
-    streamStop()
     setWaitingForResponse(false)
-  }, [activeFriendlyId, isNewChat, setPinToTop, setWaitingForResponse, streamStop])
+  }, [activeFriendlyId, isNewChat, setPinToTop, setWaitingForResponse])
 
   useLayoutEffect(() => {
     if (isNewChat) return

@@ -473,7 +473,7 @@ export function ChatScreen({
     )
   }, [gatewayError, handleGatewayRefetch, showGatewayNotice])
 
-  const { stopStream } = useChatStream({
+  useChatStream({
     activeFriendlyId,
     isNewChat,
     isRedirecting,
@@ -551,7 +551,6 @@ export function ChatScreen({
     resolvedSessionKey,
     setWaitingForResponse,
     setPinToTop,
-    streamStop: stopStream,
     sendMessage,
   })
 
