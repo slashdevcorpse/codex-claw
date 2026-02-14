@@ -15,15 +15,12 @@ export function useChatGenerationGuard({
 }: UseChatGenerationGuardInput) {
   const timeoutTimer = useRef<number | null>(null)
   const waitingRef = useRef(waitingForResponse)
+  waitingRef.current = waitingForResponse
 
   function finish() {
     setPendingGeneration(false)
     setWaitingForResponse(false)
   }
-
-  useEffect(() => {
-    waitingRef.current = waitingForResponse
-  }, [waitingForResponse])
 
   useEffect(() => {
     if (!waitingForResponse) {

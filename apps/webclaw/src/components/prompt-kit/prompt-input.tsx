@@ -4,7 +4,6 @@ import React, {
   createContext,
   memo,
   useContext,
-  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -116,23 +115,16 @@ function PromptInput({
     onValueChange?.(newValue)
   }
 
-  useEffect(() => {
-    if (setValueRef) {
-      setValueRef.current = function setValue(nextValue: string) {
-        setInternalValue(nextValue)
-        onValueChange?.(nextValue)
-      }
-      return () => {
-        setValueRef.current = null
-      }
+  if (setValueRef) {
+    setValueRef.current = function setValue(nextValue: string) {
+      setInternalValue(nextValue)
+      onValueChange?.(nextValue)
     }
-  }, [onValueChange, setValueRef])
+  }
 
-  useEffect(() => {
-    if (valueRef) {
-      valueRef.current = value ?? internalValue
-    }
-  }, [internalValue, value, valueRef])
+  if (valueRef) {
+    valueRef.current = value ?? internalValue
+  }
 
   function handleClick(e: React.MouseEvent<HTMLDivElement>) {
     if (!disabled) textareaRef.current?.focus()

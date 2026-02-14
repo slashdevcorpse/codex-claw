@@ -51,10 +51,7 @@ export function useChatStream({
   const streamRunSourceRef = useRef(new Map<string, 'agent' | 'chat'>())
   const streamSeenEventKeysRef = useRef(new Set<string>())
   const refreshHistoryRef = useRef(refreshHistory)
-
-  useEffect(() => {
-    refreshHistoryRef.current = refreshHistory
-  }, [refreshHistory])
+  refreshHistoryRef.current = refreshHistory
 
   const stopStream = useCallback(() => {
     if (streamReconnectTimer.current) {
