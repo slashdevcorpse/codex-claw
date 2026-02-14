@@ -31,17 +31,16 @@ export function useChatRedirect({
   const navigate = useNavigate()
 
   useEffect(() => {
-    if (!isRedirecting) return
-    if (isNewChat) {
-      setIsRedirecting(false)
-      return
+    if (isRedirecting) {
+      if (isNewChat) {
+        setIsRedirecting(false)
+        return
+      }
+      if (!shouldRedirectToNew && sessionsReady) {
+        setIsRedirecting(false)
+      }
     }
-    if (!shouldRedirectToNew && sessionsReady) {
-      setIsRedirecting(false)
-    }
-  }, [isNewChat, isRedirecting, sessionsReady, setIsRedirecting, shouldRedirectToNew])
 
-  useEffect(() => {
     if (isNewChat) return
     if (!sessionsReady) return
     if (sessionsCount === 0) return
@@ -57,6 +56,7 @@ export function useChatRedirect({
     sessionKeyForHistory,
     sessionsCount,
     sessionsReady,
+    setIsRedirecting,
     shouldRedirectToNew,
   ])
 }

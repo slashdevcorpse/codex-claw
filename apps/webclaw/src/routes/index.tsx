@@ -1,21 +1,17 @@
-import { useEffect } from 'react'
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, redirect } from '@tanstack/react-router'
 
 export const Route = createFileRoute('/')({
-  component: IndexRoute,
-})
-
-function IndexRoute() {
-  const navigate = Route.useNavigate()
-
-  useEffect(() => {
-    navigate({
+  beforeLoad: () => {
+    throw redirect({
       to: '/chat/$sessionKey',
       params: { sessionKey: 'main' },
       replace: true,
     })
-  }, [navigate])
+  },
+  component: IndexRoute,
+})
 
+function IndexRoute() {
   return (
     <div className="h-screen flex items-center justify-center text-primary-600">
       Loading…
