@@ -255,10 +255,7 @@ export function App() {
         <div className="space-y-6">
           <h2 className="font-[450]">Installation</h2>
           <CodeBlock className="rounded-[6px] border-none bg-[#FCFCFC] shadow-2xs outline-1 outline-neutral-950/10 [&>div]:bg-[#FCFCFC] [&>div>pre]:!bg-[#FCFCFC]">
-            <CodeBlockCode
-              code={`curl -fsSL https://webclaw.dev/install | bash`}
-              language="bash"
-            />
+            <CodeBlockCode code={`npx webclaw`} language="bash" />
           </CodeBlock>
         </div>
       </main>

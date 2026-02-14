@@ -11,39 +11,12 @@ Currently in beta.
 ## Installation
 
 ```bash
-curl -fsSL https://webclaw.dev/install | bash
-```
-
-## npm CLI
-
-```bash
 npx webclaw
 ```
 
-Initialize in a target directory:
+The CLI will ask for a project name, env keys, and a port, then create the folder and start WebClaw.
 
-```bash
-npx webclaw init my-webclaw
-```
-
-### CLI release (simple)
-
-```bash
-pnpm bump:webclaw:patch
-pnpm release:webclaw
-```
-
-## Other option
-
-Create `apps/webclaw/.env.local` with `CLAWDBOT_GATEWAY_URL` and either
-`CLAWDBOT_GATEWAY_TOKEN` (recommended) or `CLAWDBOT_GATEWAY_PASSWORD`. These map
-to your OpenClaw Gateway auth (`gateway.auth.token` or `gateway.auth.password`).
-Default URL is `ws://127.0.0.1:18789`. Docs: https://docs.openclaw.ai/gateway
-
-```bash
-pnpm install
-pnpm dev
-```
+WebClaw env vars: `CLAWDBOT_GATEWAY_URL` + `CLAWDBOT_GATEWAY_TOKEN` (or `CLAWDBOT_GATEWAY_PASSWORD`) — OpenClaw gateway/auth docs: https://docs.openclaw.ai/gateway (env precedence: https://docs.openclaw.ai/help/environment).
 
 ## Contributing
 

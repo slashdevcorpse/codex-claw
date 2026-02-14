@@ -8,11 +8,12 @@ Official CLI for WebClaw. It initializes a new project by cloning the WebClaw re
 npx webclaw
 ```
 
-Initialize into a specific directory:
+You will be prompted for:
+- project name
+- environment keys (`CLAWDBOT_GATEWAY_URL`, token/password)
+- local dev port
 
-```bash
-npx webclaw init my-webclaw
-```
+Then the CLI creates the project folder, installs dependencies, and starts WebClaw.
 
 Run project commands from a WebClaw project directory:
 
@@ -26,6 +27,6 @@ webclaw lint
 
 ## Commands
 
-- `webclaw` - initialize in current directory
-- `webclaw init [dir]` - initialize a project in `dir`
+- `webclaw` - create and start a new project
+- `webclaw init [dir]` - initialize a project in `dir` (legacy)
 - `webclaw doctor` - validate local prerequisites

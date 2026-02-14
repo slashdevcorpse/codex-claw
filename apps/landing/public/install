@@ -35,7 +35,7 @@ fi
 if [ -d "$APP_DIR" ]; then
   echo "Directory '$APP_DIR' already exists. Skipping init."
 else
-  npx webclaw init "$APP_DIR"
+  npx webclaw --project-name "$APP_DIR" --yes --no-start
 fi
 
 echo ""
