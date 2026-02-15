@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useHotkey } from '@tanstack/react-hotkeys'
 
 type SessionShortcutOptions = {
   onNewSession: () => void
@@ -9,37 +9,32 @@ function useSessionShortcuts({
   onNewSession,
   onSearchSessions,
 }: SessionShortcutOptions) {
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.defaultPrevented) return
-      if (event.altKey) return
-      if (!(event.metaKey || event.ctrlKey)) return
-      const target = event.target as HTMLElement | null
-      if (!target) return
-      const tag = target.tagName.toLowerCase()
-      if (
-        tag === 'input' ||
-        tag === 'textarea' ||
-        tag === 'select' ||
-        target.isContentEditable
-      ) {
-        return
-      }
+  useHotkey(
+    'Mod+K',
+    function handleSearchHotkey(event) {
+      if (event.altKey || isEditableTarget(event.target)) return
+      event.preventDefault()
+      onSearchSessions()
+    },
+    { preventDefault: true },
+  )
 
-      if (event.key.toLowerCase() === 'k' && !event.shiftKey) {
-        event.preventDefault()
-        onSearchSessions()
-      }
+  useHotkey(
+    'Mod+Shift+O',
+    function handleNewSessionHotkey(event) {
+      if (event.altKey || isEditableTarget(event.target)) return
+      event.preventDefault()
+      onNewSession()
+    },
+    { preventDefault: true },
+  )
+}
 
-      if (event.key.toLowerCase() === 'o' && event.shiftKey) {
-        event.preventDefault()
-        onNewSession()
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [onNewSession, onSearchSessions])
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  const tag = target.tagName.toLowerCase()
+  if (tag === 'input' || tag === 'textarea' || tag === 'select') return true
+  return target.isContentEditable
 }
 
 export { useSessionShortcuts }
