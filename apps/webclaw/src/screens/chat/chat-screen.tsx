@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from '@tanstack/react-router'
+import { Navigate, useNavigate } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import {
@@ -38,7 +38,7 @@ import { useChatSessions } from './hooks/use-chat-sessions'
 import { useChatStream } from './hooks/use-chat-stream'
 import { useChatPendingSend } from './hooks/use-chat-pending-send'
 import { useChatGenerationGuard } from './hooks/use-chat-generation-guard'
-import { useChatErrorState } from './hooks/use-chat-error-state'
+import { shouldRedirectToConnect } from './hooks/use-chat-error-state'
 import { useChatRedirect } from './hooks/use-chat-redirect'
 import type { AttachmentFile } from '@/components/attachment-button'
 import type { ChatComposerHelpers } from './components/chat-composer'
@@ -66,7 +66,6 @@ export function ChatScreen({
   const queryClient = useQueryClient()
   const [sending, setSending] = useState(false)
   const [creatingSession, setCreatingSession] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [isRedirecting, setIsRedirecting] = useState(false)
   const { headerRef, composerRef, mainRef, pinGroupMinHeight, headerHeight } =
     useChatMeasurements()
@@ -144,7 +143,6 @@ export function ChatScreen({
   }, [gatewayStatusQuery])
   const isSidebarCollapsed = uiQuery.data.isSidebarCollapsed
   const handleActiveSessionDelete = useCallback(() => {
-    setError(null)
     setIsRedirecting(true)
     navigate({ to: '/new', replace: true })
   }, [navigate])
@@ -253,7 +251,6 @@ export function ChatScreen({
 
     setPendingGeneration(true)
     setSending(true)
-    setError(null)
     setWaitingForResponse(true)
     setPinToTop(true)
 
@@ -304,7 +301,6 @@ export function ChatScreen({
             },
           )
         }
-        setError(`Failed to send message. ${messageText}`)
         setPendingGeneration(false)
         setWaitingForResponse(false)
         setPinToTop(false)
@@ -383,7 +379,7 @@ export function ChatScreen({
               replace: true,
             })
           })
-          .catch((err: unknown) => {
+          .catch(() => {
             removeHistoryMessageByClientId(
               queryClient,
               'new',
@@ -392,9 +388,6 @@ export function ChatScreen({
               optimisticId,
             )
             helpers.setValue(body)
-            setError(
-              `Failed to create session. ${err instanceof Error ? err.message : String(err)}`,
-            )
             setPendingGeneration(false)
             setWaitingForResponse(false)
             setPinToTop(false)
@@ -460,6 +453,15 @@ export function ChatScreen({
   const showGatewayNotice =
     showGatewayDown &&
     gatewayStatusQuery.errorUpdatedAt > gatewayStatusMountRef.current
+  const redirectToConnect = shouldRedirectToConnect({
+    isRedirecting,
+    shouldRedirectToNew,
+    sessionsReady: sessionsQuery.isSuccess,
+    activeExists,
+    sessionsError,
+    historyError,
+    gatewayStatusError,
+  })
   const historyEmpty = !historyLoading && displayMessages.length === 0
   const gatewayNotice = useMemo(() => {
     if (!showGatewayNotice) return null
@@ -512,18 +514,6 @@ export function ChatScreen({
     },
   })
 
-  useChatErrorState({
-    error,
-    setError,
-    isRedirecting,
-    shouldRedirectToNew,
-    sessionsReady: sessionsQuery.isSuccess,
-    activeExists,
-    sessionsError,
-    historyError,
-    gatewayStatusError,
-  })
-
   useChatRedirect({
     activeFriendlyId,
     isNewChat,
@@ -566,6 +556,10 @@ export function ChatScreen({
       onActiveSessionDelete={handleActiveSessionDelete}
     />
   )
+
+  if (redirectToConnect) {
+    return <Navigate to="/connect" replace />
+  }
 
   return (
     <div className="h-screen bg-surface text-primary-900">
