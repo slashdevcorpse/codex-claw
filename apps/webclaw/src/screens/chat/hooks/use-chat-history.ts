@@ -27,8 +27,7 @@ export function useChatHistory({
   sessionsReady,
   queryClient,
 }: UseChatHistoryInput) {
-  const sessionKeyForHistory =
-    forcedSessionKey || activeSessionKey || activeFriendlyId
+  const sessionKeyForHistory = forcedSessionKey || activeSessionKey || ''
   const historyKey = chatQueryKeys.history(
     activeFriendlyId,
     sessionKeyForHistory,
@@ -77,6 +76,7 @@ export function useChatHistory({
       Boolean(activeFriendlyId) &&
       !isRedirecting &&
       (!sessionsReady || activeExists),
+    retry: false,
     placeholderData: function useCachedHistory(): HistoryResponse | undefined {
       return queryClient.getQueryData(historyKey)
     },

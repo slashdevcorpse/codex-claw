@@ -130,3 +130,15 @@ export const missingGatewayAuthMessage =
 export function isMissingGatewayAuth(message: string): boolean {
   return message.includes(missingGatewayAuthMessage)
 }
+
+export function isSessionNotFound(message: string): boolean {
+  if (!message) return false
+  const normalized = message.toLowerCase()
+  if (normalized.includes('session not found')) return true
+  if (normalized.includes('unknown session')) return true
+  if (normalized.includes('chat not found')) return true
+  if (normalized.includes('not found') && normalized.includes('session')) {
+    return true
+  }
+  return false
+}

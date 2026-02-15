@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   deriveFriendlyIdFromKey,
   isMissingGatewayAuth,
+  isSessionNotFound,
   readError,
 } from './utils'
 import { createOptimisticMessage } from './chat-screen-utils'
@@ -147,16 +148,17 @@ export function ChatScreen({
     navigate({ to: '/new', replace: true })
   }, [navigate])
   const stableContentStyle = useMemo<React.CSSProperties>(() => ({}), [])
+  const missingSessionError =
+    isSessionNotFound(historyError ?? '') ||
+    isSessionNotFound(sessionsError ?? '')
 
   const shouldRedirectToNew =
     !isNewChat &&
     !forcedSessionKey &&
     !isRecentSession(activeFriendlyId) &&
     sessionsQuery.isSuccess &&
-    sessions.length > 0 &&
     !sessions.some((session) => session.friendlyId === activeFriendlyId) &&
-    !historyQuery.isFetching &&
-    !historyQuery.isSuccess
+    (missingSessionError || (!historyQuery.isFetching && !historyQuery.isSuccess))
 
   const refreshHistory = useCallback(() => {
     void historyQuery.refetch()
@@ -520,7 +522,6 @@ export function ChatScreen({
     isRedirecting,
     shouldRedirectToNew,
     sessionsReady: sessionsQuery.isSuccess,
-    sessionsCount: sessions.length,
     sessionKeyForHistory,
     queryClient,
     setIsRedirecting,

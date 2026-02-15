@@ -11,7 +11,6 @@ type UseChatRedirectInput = {
   isRedirecting: boolean
   shouldRedirectToNew: boolean
   sessionsReady: boolean
-  sessionsCount: number
   sessionKeyForHistory: string
   queryClient: QueryClient
   setIsRedirecting: (value: boolean) => void
@@ -23,7 +22,6 @@ export function useChatRedirect({
   isRedirecting,
   shouldRedirectToNew,
   sessionsReady,
-  sessionsCount,
   sessionKeyForHistory,
   queryClient,
   setIsRedirecting,
@@ -43,7 +41,6 @@ export function useChatRedirect({
 
     if (isNewChat) return
     if (!sessionsReady) return
-    if (sessionsCount === 0) return
     if (!shouldRedirectToNew) return
     resetPendingSend()
     clearHistoryMessages(queryClient, activeFriendlyId, sessionKeyForHistory)
@@ -54,7 +51,6 @@ export function useChatRedirect({
     navigate,
     queryClient,
     sessionKeyForHistory,
-    sessionsCount,
     sessionsReady,
     setIsRedirecting,
     shouldRedirectToNew,
