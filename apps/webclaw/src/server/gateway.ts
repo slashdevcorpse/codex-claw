@@ -275,6 +275,7 @@ function getGatewayConfig() {
 async function buildConnectParams(
   token: string,
   password: string,
+  nonce?: string,
 ): Promise<ConnectParams> {
   const clientId = 'gateway-client'
   const clientMode = 'ui'
@@ -303,8 +304,9 @@ async function buildConnectParams(
   try {
     const identity = await getDeviceIdentity()
     const signedAt = Date.now()
-    const payload = [
-      'v1',
+    const version = nonce ? 'v2' : 'v1'
+    const base = [
+      version,
       identity.deviceId,
       clientId,
       clientMode,
@@ -312,7 +314,9 @@ async function buildConnectParams(
       scopes.join(','),
       String(signedAt),
       token || '',
-    ].join('|')
+    ]
+    if (version === 'v2') base.push(nonce || '')
+    const payload = base.join('|')
     const signature = await signPayload(identity.privateKey, payload)
 
     params.device = {
@@ -320,6 +324,7 @@ async function buildConnectParams(
       publicKey: identity.publicKeyRawBase64Url,
       signature,
       signedAt,
+      nonce,
     }
   } catch (err) {
     console.warn(
@@ -331,11 +336,51 @@ async function buildConnectParams(
   return params
 }
 
+/**
+ * Wait for the connect.challenge event from the gateway.
+ * The gateway sends this immediately after WS open, before any connect request.
+ * Returns the nonce string.
+ */
+function waitForConnectChallenge(ws: WebSocket, timeoutMs = 5000): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      ws.removeEventListener('message', handler)
+      reject(new Error('Timed out waiting for connect.challenge event'))
+    }, timeoutMs)
+
+    function handler(evt: MessageEvent) {
+      try {
+        const data = typeof evt.data === 'string' ? evt.data : ''
+        const parsed = JSON.parse(data) as GatewayFrame
+        if (parsed.type === 'event' && (parsed as any).event === 'connect.challenge') {
+          const payload = (parsed as any).payload as { nonce?: string } | undefined
+          const nonce = payload?.nonce
+          if (typeof nonce === 'string' && nonce.trim()) {
+            clearTimeout(timer)
+            ws.removeEventListener('message', handler)
+            resolve(nonce.trim())
+          }
+        }
+      } catch {
+        // ignore parse errors
+      }
+    }
+
+    ws.addEventListener('message', handler)
+  })
+}
+
 async function connectGateway(ws: WebSocket): Promise<void> {
   const { token, password } = getGatewayConfig()
   await wsOpen(ws)
+
+  // Wait for the connect.challenge event containing the nonce
+  const nonce = await waitForConnectChallenge(ws)
+  console.log(`[gateway-ws] Received connect challenge nonce: ${nonce.slice(0, 8)}...`)
+
+  // Send connect with the nonce
   const connectId = randomUUID()
-  const connectParams = await buildConnectParams(token, password)
+  const connectParams = await buildConnectParams(token, password, nonce)
   const connectReq: GatewayFrame = {
     type: 'req',
     id: connectId,
@@ -418,8 +463,14 @@ function createGatewayClient(): GatewayClient {
   async function connect() {
     if (connected || closed) return
     await wsOpen(ws)
+
+    // Wait for the connect.challenge event containing the nonce
+    const nonce = await waitForConnectChallenge(ws)
+    console.log(`[gateway-ws] Received connect challenge nonce: ${nonce.slice(0, 8)}...`)
+
+    // Send connect with the nonce
     const connectId = randomUUID()
-    const connectParams = await buildConnectParams(token, password)
+    const connectParams = await buildConnectParams(token, password, nonce)
     const connectReq: GatewayFrame = {
       type: 'req',
       id: connectId,
@@ -703,10 +754,15 @@ export async function gatewayRpc<TPayload = unknown>(
   try {
     await wsOpen(ws)
 
-    // 1) connect handshake (must be first request)
-    const connectId = randomUUID()
-    const connectParams = await buildConnectParams(token, password)
+    // Wait for the connect.challenge event containing the nonce
+    const nonce = await waitForConnectChallenge(ws)
 
+    const waiter = createGatewayWaiter()
+    ws.addEventListener('message', waiter.handleMessage)
+
+    // 1) connect handshake with nonce
+    const connectId = randomUUID()
+    const connectParams = await buildConnectParams(token, password, nonce)
     const connectReq: GatewayFrame = {
       type: 'req',
       id: connectId,
@@ -714,6 +770,10 @@ export async function gatewayRpc<TPayload = unknown>(
       params: connectParams,
     }
 
+    ws.send(JSON.stringify(connectReq))
+    await waiter.waitForRes(connectId)
+
+    // 2) send actual RPC request
     const requestId = randomUUID()
     const req: GatewayFrame = {
       type: 'req',
@@ -721,13 +781,6 @@ export async function gatewayRpc<TPayload = unknown>(
       method,
       params,
     }
-
-    const waiter = createGatewayWaiter()
-
-    ws.addEventListener('message', waiter.handleMessage)
-
-    ws.send(JSON.stringify(connectReq))
-    await waiter.waitForRes(connectId)
 
     ws.send(JSON.stringify(req))
     const payload = await waiter.waitForRes(requestId)
@@ -750,8 +803,11 @@ export async function gatewayConnectCheck(): Promise<void> {
   try {
     await wsOpen(ws)
 
+    // Wait for the connect.challenge event containing the nonce
+    const nonce = await waitForConnectChallenge(ws)
+
     const connectId = randomUUID()
-    const connectParams = await buildConnectParams(token, password)
+    const connectParams = await buildConnectParams(token, password, nonce)
     const connectReq: GatewayFrame = {
       type: 'req',
       id: connectId,
