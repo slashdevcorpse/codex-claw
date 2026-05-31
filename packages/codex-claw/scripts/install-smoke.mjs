@@ -41,26 +41,30 @@ function parseArgs(args) {
   return { source }
 }
 
-function quoteShellArg(value) {
-  const text = String(value)
-  if (/^[a-zA-Z0-9_./:@%+=,\\-]+$/.test(text)) {
-    return text
-  }
-  return '\"' + text.replace(/"/g, '\\\"') + '\"'
+function resolveNpmCliPath() {
+  const nodeDir = path.dirname(process.execPath)
+  const prefixDir = path.resolve(nodeDir, '..')
+  const candidates = [
+    path.join(nodeDir, 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+    path.join(prefixDir, 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+    path.join(prefixDir, 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+  ]
+
+  return candidates.find((candidate) => fs.existsSync(candidate)) || null
 }
 
-function run(command, args, cwd) {
-  if (process.platform === 'win32') {
-    return spawnSync([command, ...args.map(quoteShellArg)].join(' '), {
+function runNpm(args, cwd) {
+  const npmCliPath = resolveNpmCliPath()
+  if (npmCliPath) {
+    return spawnSync(process.execPath, [npmCliPath, ...args], {
       cwd,
       encoding: 'utf8',
       env: process.env,
-      shell: true,
       stdio: 'pipe',
     })
   }
 
-  return spawnSync(command, args, {
+  return spawnSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', args, {
     cwd,
     encoding: 'utf8',
     env: process.env,
@@ -112,13 +116,12 @@ function runPackSmoke() {
 
   try {
     process.stdout.write('Packing local codex-claw package...\n')
-    const packResult = run('npm', ['pack', '--pack-destination', tempDir], packageDir)
+    const packResult = runNpm(['pack', '--pack-destination', tempDir], packageDir)
     assertSuccess(packResult, 'npm pack failed for the local codex-claw package.')
 
     const tarballPath = findPackedTarball(packResult, tempDir)
     process.stdout.write('Running npx-compatible smoke test from packed tarball...\n')
-    const npxResult = run(
-      'npm',
+    const npxResult = runNpm(
       ['exec', '--yes', '--package', tarballPath, '--', packageName, '--help'],
       packageDir,
     )
@@ -134,7 +137,7 @@ function runPackSmoke() {
 
 function runNpmSmoke() {
   process.stdout.write('Checking published codex-claw alpha package...\n')
-  const viewResult = run('npm', ['view', alphaSpec, 'version'], packageDir)
+  const viewResult = runNpm(['view', alphaSpec, 'version'], packageDir)
   if (viewResult.status !== 0) {
     const combinedOutput = ((viewResult.stdout || '') + '\n' + (viewResult.stderr || '')).trim()
     if (/E404|404|not found|No match found/i.test(combinedOutput)) {
@@ -155,8 +158,7 @@ function runNpmSmoke() {
   const version = viewResult.stdout.trim()
   process.stdout.write('Found codex-claw@alpha version ' + version + '.\n')
   process.stdout.write('Running npx-compatible smoke test from npm alpha...\n')
-  const npxResult = run(
-    'npm',
+  const npxResult = runNpm(
     ['exec', '--yes', '--package', alphaSpec, '--', packageName, '--help'],
     packageDir,
   )
