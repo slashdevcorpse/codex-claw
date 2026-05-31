@@ -95,10 +95,15 @@ type CodexExecJsonEvent = {
   message?: unknown
   content?: unknown
   item?: {
+    id?: string
     type?: string
     role?: string
     text?: string
     delta?: string
+    command?: string
+    aggregated_output?: string
+    exit_code?: number | null
+    status?: string
     content?: unknown
     name?: string
     arguments?: Record<string, unknown>
@@ -128,6 +133,10 @@ type ProcessedCodexJsonLine =
   | {
       kind: 'assistant-final'
       text: string
+    }
+  | {
+      kind: 'message-delta'
+      message: CodexMessage
     }
 
 const supportedImageMimeTypes = new Set([
@@ -543,12 +552,97 @@ function isAssistantJsonEvent(event: CodexExecJsonEvent) {
   )
 }
 
+function commandExecutionDetails(
+  item: NonNullable<CodexExecJsonEvent['item']>,
+) {
+  const details: Record<string, unknown> = {}
+  if (typeof item.command === 'string' && item.command.trim()) {
+    details.command = item.command.trim()
+  }
+  if (typeof item.status === 'string' && item.status.trim()) {
+    details.status = item.status.trim()
+  }
+  if (typeof item.exit_code === 'number') {
+    details.exitCode = item.exit_code
+  }
+  return details
+}
+
+function commandExecutionStartedMessage(
+  item: NonNullable<CodexExecJsonEvent['item']>,
+): CodexMessage {
+  const id = typeof item.id === 'string' ? item.id.trim() : ''
+  const command = typeof item.command === 'string' ? item.command.trim() : ''
+  return {
+    id: id || undefined,
+    role: 'assistant',
+    timestamp: Date.now(),
+    content: [
+      {
+        type: 'toolCall',
+        id: id || undefined,
+        name: 'command_execution',
+        arguments: command ? { command } : undefined,
+      },
+    ],
+  }
+}
+
+function commandExecutionCompletedMessage(
+  item: NonNullable<CodexExecJsonEvent['item']>,
+): CodexMessage {
+  const id = typeof item.id === 'string' ? item.id.trim() : ''
+  const output = String(item.aggregated_output ?? '').trim()
+  const status = typeof item.status === 'string' ? item.status.trim() : ''
+  const exitCode = item.exit_code
+  const isError =
+    (typeof exitCode === 'number' && exitCode !== 0) ||
+    (status.length > 0 && status !== 'completed')
+
+  return {
+    id: id ? `${id}:result` : undefined,
+    role: 'toolResult',
+    toolCallId: id || undefined,
+    toolName: 'command_execution',
+    timestamp: Date.now(),
+    details: commandExecutionDetails(item),
+    isError,
+    content: [
+      {
+        type: 'text',
+        text: output || status || 'Command finished.',
+      },
+    ],
+  }
+}
+
+function processCommandExecutionJsonEvent(
+  event: CodexExecJsonEvent,
+): ProcessedCodexJsonLine | null {
+  if (event.item?.type !== 'command_execution') return null
+  if (event.type === 'item.started') {
+    return {
+      kind: 'message-delta',
+      message: commandExecutionStartedMessage(event.item),
+    }
+  }
+  if (event.type === 'item.completed') {
+    return {
+      kind: 'message-delta',
+      message: commandExecutionCompletedMessage(event.item),
+    }
+  }
+  return null
+}
+
 export function processCodexJsonLine(
   line: string,
 ): ProcessedCodexJsonLine | null {
   if (!line.startsWith('{')) return null
   try {
     const event = JSON.parse(line) as CodexExecJsonEvent
+    const commandEvent = processCommandExecutionJsonEvent(event)
+    if (commandEvent) return commandEvent
     if (!isAssistantJsonEvent(event)) return null
 
     const text =
@@ -619,7 +713,7 @@ function runCodexExec(
   let assistantText = ''
   let streamSeq = 0
 
-  function emitAssistantDelta(text: string) {
+  function emitStreamMessage(message: CodexMessage, state: 'delta' | 'final') {
     streamSeq += 1
     emit(session.key, {
       event: 'chat',
@@ -628,27 +722,19 @@ function runCodexExec(
       payload: {
         runId,
         sessionKey: session.key,
-        state: 'delta',
-        seq: streamSeq,
-        message: messageFromAssistantText(text, runId),
-      },
-    })
-  }
-
-  function emitFinalMessage(message: CodexMessage) {
-    streamSeq += 1
-    emit(session.key, {
-      event: 'chat',
-      seq: streamSeq,
-      stateVersion,
-      payload: {
-        runId,
-        sessionKey: session.key,
-        state: 'final',
+        state,
         seq: streamSeq,
         message,
       },
     })
+  }
+
+  function emitAssistantDelta(text: string) {
+    emitStreamMessage(messageFromAssistantText(text, runId), 'delta')
+  }
+
+  function emitFinalMessage(message: CodexMessage) {
+    emitStreamMessage(message, 'final')
   }
 
   function appendFinalText(text: string) {
@@ -667,6 +753,12 @@ function runCodexExec(
     for (const line of lines) {
       const processed = processCodexJsonLine(line.trim())
       if (!processed) continue
+      if (processed.kind === 'message-delta') {
+        appendMessage(session, processed.message)
+        writeStore(store)
+        emitStreamMessage(processed.message, 'delta')
+        continue
+      }
       assistantText = mergeAssistantText(
         assistantText,
         processed.text,
@@ -708,6 +800,11 @@ function runCodexExec(
     preparedAttachments.cleanup()
     const trailing = processCodexJsonLine(stdoutBuffer.trim())
     if (trailing) {
+      if (trailing.kind === 'message-delta') {
+        appendMessage(session, trailing.message)
+        writeStore(store)
+        emitStreamMessage(trailing.message, 'delta')
+      } else {
       assistantText = mergeAssistantText(
         assistantText,
         trailing.text,
@@ -718,6 +815,7 @@ function runCodexExec(
         return
       }
       if (emittedFinal && code === 0) return
+      }
     }
 
     if (emittedFinal && code === 0) return
