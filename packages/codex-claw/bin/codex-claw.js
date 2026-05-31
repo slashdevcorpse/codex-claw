@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import fs from 'node:fs'
+import net from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
@@ -39,8 +40,10 @@ function printHelp() {
   process.stdout.write(`  --codex-sandbox <mode>  CODEX_CLI_SANDBOX value\n`)
   process.stdout.write(`  --codex-workdir <dir>   CODEX_CLI_WORKDIR value\n`)
   process.stdout.write(`  --port <port>           Dev server port\n`)
+  process.stdout.write(`  --state-dir <dir>       CODEX_CLAW_STATE_DIR value for doctor\n`)
   process.stdout.write(`  --yes                   Accept defaults (non-interactive)\n`)
   process.stdout.write(`  --no-start              Do not auto-run install + dev\n`)
+  process.stdout.write(`  --no-port-check         Skip doctor port availability check\n`)
   process.stdout.write(`  --force                 Allow init in non-empty directory\n`)
   process.stdout.write(`  --skip-env              Skip .env.local setup prompts\n`)
   process.stdout.write(`  -h, --help              Show help\n`)
@@ -56,6 +59,7 @@ function parseCliArgs(args) {
     '--codex-sandbox',
     '--codex-workdir',
     '--port',
+    '--state-dir',
   ])
 
   for (let index = 0; index < args.length; index += 1) {
@@ -377,20 +381,6 @@ function startProject(targetDir) {
   runCommand(packageManager, ['run', 'dev'], targetDir)
 }
 
-function hasCommand(command) {
-  if (process.platform === 'win32') {
-    return spawnSync(`${command} --version`, {
-      stdio: 'ignore',
-      shell: true,
-    }).status === 0
-  }
-
-  if (spawnSync(command, ['--version'], { stdio: 'ignore' }).status === 0) {
-    return true
-  }
-  return false
-}
-
 async function initProject(rawTarget, options, bootstrapConfig) {
   if (!bootstrapConfig) {
     printBanner()
@@ -519,31 +509,277 @@ async function askBootstrapConfig(defaultProjectName, parsedArgs) {
   }
 }
 
-function doctor() {
+function quoteShellArg(value) {
+  const text = String(value)
+  if (/^[a-zA-Z0-9_./:@%+=,-]+$/.test(text)) {
+    return text
+  }
+  return `"${text.replace(/"/g, '\\\\"')}"`
+}
+
+function commandNeedsShell(command) {
+  return process.platform === 'win32' || /\s/.test(command)
+}
+
+function runCommandCapture(command, args = [], cwd = process.cwd()) {
+  const useShell = commandNeedsShell(command)
+  const result = useShell
+    ? spawnSync([command, ...args.map(quoteShellArg)].join(' '), {
+        cwd,
+        encoding: 'utf8',
+        env: process.env,
+        shell: true,
+        stdio: 'pipe',
+      })
+    : spawnSync(command, args, {
+        cwd,
+        encoding: 'utf8',
+        env: process.env,
+        stdio: 'pipe',
+      })
+
+  return {
+    error: result.error,
+    status: typeof result.status === 'number' ? result.status : 1,
+    stdout: result.stdout ? result.stdout.trim() : '',
+    stderr: result.stderr ? result.stderr.trim() : '',
+  }
+}
+
+function firstOutputLine(result) {
+  const output = result.stdout || result.stderr
+  return output.split(/\r?\n/).find((line) => line.trim().length > 0) || ''
+}
+
+function createDoctorCheck(status, label, message) {
+  return { status, label, message }
+}
+
+function checkCommandVersion(label, command, args, missingMessage) {
+  const result = runCommandCapture(command, args)
+  if (result.status === 0) {
+    const version = firstOutputLine(result)
+    return createDoctorCheck(
+      'ok',
+      label,
+      version.length > 0 ? version : `${command} is available.`,
+    )
+  }
+
+  const reason = result.error?.message || firstOutputLine(result)
+  const suffix = reason.length > 0 ? ` (${reason})` : ''
+  return createDoctorCheck('fail', label, `${missingMessage}${suffix}`)
+}
+
+function checkNodeVersion() {
   const nodeMajor = Number(process.versions.node.split('.')[0] || 0)
-  const hasPnpm = hasCommand('pnpm')
-  const hasCodex = hasCommand('codex')
-  const issues = []
-
   if (nodeMajor < 20) {
-    issues.push('Node.js >= 20 is required.')
-  }
-  if (!hasPnpm) {
-    issues.push('pnpm is recommended but was not found in PATH.')
-  }
-  if (!hasCodex) {
-    issues.push('Codex CLI was not found in PATH.')
+    return createDoctorCheck(
+      'fail',
+      'Node.js',
+      `Node.js >= 20 is required. Found ${process.versions.node}.`,
+    )
   }
 
-  if (issues.length === 0) {
-    process.stdout.write('Environment looks good.\n')
+  return createDoctorCheck('ok', 'Node.js', `Node.js ${process.versions.node}`)
+}
+
+function checkNpmAuth() {
+  const result = runCommandCapture('npm', ['whoami'])
+  if (result.status === 0) {
+    return createDoctorCheck('ok', 'npm auth', `Authenticated as ${result.stdout}.`)
+  }
+
+  return createDoctorCheck(
+    'warn',
+    'npm auth',
+    'npm auth unavailable. Run `npm login` before publishing codex-claw@alpha.',
+  )
+}
+
+function checkGitWorktree() {
+  const result = runCommandCapture('git', ['rev-parse', '--is-inside-work-tree'])
+  if (result.status === 0 && result.stdout === 'true') {
+    return createDoctorCheck('ok', 'git worktree', 'Current directory is a git worktree.')
+  }
+
+  return createDoctorCheck(
+    'warn',
+    'git worktree',
+    'Current directory is not a git worktree. Bootstrap creates one for new projects.',
+  )
+}
+
+function resolveDoctorStateDir(parsedArgs) {
+  const stateDir =
+    parsedArgs.values.get('--state-dir') ||
+    process.env.CODEX_CLAW_STATE_DIR ||
+    path.join(process.cwd(), '.codex-claw')
+  return path.resolve(process.cwd(), stateDir)
+}
+
+function checkStateDirectory(parsedArgs) {
+  const stateDir = resolveDoctorStateDir(parsedArgs)
+  const parentDir = path.dirname(stateDir)
+
+  try {
+    if (fs.existsSync(stateDir)) {
+      const stat = fs.statSync(stateDir)
+      if (!stat.isDirectory()) {
+        return createDoctorCheck(
+          'fail',
+          'state directory',
+          `${stateDir} exists but is not a directory.`,
+        )
+      }
+
+      fs.accessSync(stateDir, fs.constants.R_OK | fs.constants.W_OK)
+      const probePath = path.join(
+        stateDir,
+        `.doctor-${process.pid}-${Date.now()}.tmp`,
+      )
+      fs.writeFileSync(probePath, 'ok\n')
+      fs.rmSync(probePath, { force: true })
+      return createDoctorCheck(
+        'ok',
+        'state directory',
+        `${stateDir} is writable.`,
+      )
+    }
+
+    if (!fs.existsSync(parentDir)) {
+      return createDoctorCheck(
+        'fail',
+        'state directory',
+        `Parent directory does not exist for ${stateDir}.`,
+      )
+    }
+
+    fs.accessSync(parentDir, fs.constants.W_OK)
+    return createDoctorCheck(
+      'ok',
+      'state directory',
+      `${stateDir} can be created on first run.`,
+    )
+  } catch (error) {
+    return createDoctorCheck(
+      'fail',
+      'state directory',
+      `${stateDir} is not writable: ${error instanceof Error ? error.message : String(error)}`,
+    )
+  }
+}
+
+function checkPortAvailable(port) {
+  return new Promise((resolve) => {
+    const server = net.createServer()
+    let settled = false
+
+    function finish(check) {
+      if (settled) return
+      settled = true
+      resolve(check)
+    }
+
+    server.once('error', (error) => {
+      if (error && error.code === 'EADDRINUSE') {
+        finish(
+          createDoctorCheck(
+            'fail',
+            'port',
+            `Port ${port} is already in use. Re-run with --port <free-port> or stop the existing process.`,
+          ),
+        )
+        return
+      }
+
+      finish(
+        createDoctorCheck(
+          'fail',
+          'port',
+          `Port ${port} is not available: ${error instanceof Error ? error.message : String(error)}`,
+        ),
+      )
+    })
+
+    server.once('listening', () => {
+      server.close(() => {
+        finish(createDoctorCheck('ok', 'port', `Port ${port} is available.`))
+      })
+    })
+
+    server.listen(port, '127.0.0.1')
+  })
+}
+
+function printDoctorChecks(checks) {
+  for (const check of checks) {
+    process.stdout.write(`[${check.status}] ${check.label}: ${check.message}\n`)
+  }
+}
+
+async function doctor(parsedArgs) {
+  const codexCommand =
+    parsedArgs.values.get('--codex-command') ||
+    process.env.CODEX_CLI_COMMAND ||
+    'codex'
+  const port = parsePort(parsedArgs.values.get('--port') || process.env.PORT || 3000, 3000)
+  const checks = [
+    checkNodeVersion(),
+    checkCommandVersion(
+      'npm',
+      'npm',
+      ['--version'],
+      'npm was not found in PATH. Install Node.js with npm, then retry.',
+    ),
+    checkNpmAuth(),
+    checkCommandVersion(
+      'pnpm',
+      'pnpm',
+      ['--version'],
+      'pnpm was not found in PATH. Install it with `npm install -g pnpm` or Corepack.',
+    ),
+    checkCommandVersion(
+      'git',
+      'git',
+      ['--version'],
+      'git was not found in PATH. Install Git before bootstrapping CodexClaw.',
+    ),
+    checkGitWorktree(),
+    checkCommandVersion(
+      'Codex CLI',
+      codexCommand,
+      ['--version'],
+      `Codex CLI was not found with command \`${codexCommand}\`. Install Codex CLI, run \`codex login\`, or pass --codex-command <cmd>.`,
+    ),
+    checkStateDirectory(parsedArgs),
+  ]
+
+  if (parsedArgs.flags.has('--no-port-check')) {
+    checks.push(createDoctorCheck('warn', 'port', 'Port availability check skipped.'))
+  } else {
+    checks.push(await checkPortAvailable(port))
+  }
+
+  printDoctorChecks(checks)
+
+  const failures = checks.filter((check) => check.status === 'fail')
+  const warnings = checks.filter((check) => check.status === 'warn')
+  if (failures.length > 0) {
+    process.stderr.write(
+      `CodexClaw doctor found ${failures.length} blocking issue(s).\n`,
+    )
+    process.exit(1)
+  }
+
+  if (warnings.length > 0) {
+    process.stdout.write(
+      `Environment is usable with ${warnings.length} warning(s).\n`,
+    )
     return
   }
 
-  for (const issue of issues) {
-    process.stderr.write(`- ${issue}\n`)
-  }
-  process.exit(1)
+  process.stdout.write('Environment looks good.\n')
 }
 
 async function main() {
@@ -571,7 +807,7 @@ async function main() {
   }
 
   if (command === 'doctor') {
-    doctor()
+    await doctor(parsedArgs)
     return
   }
 

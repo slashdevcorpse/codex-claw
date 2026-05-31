@@ -26,6 +26,7 @@ CodexClaw turns your installed <code>codex</code> command into a local web clien
 - [Terminal Demo](#terminal-demo)
 - [Configuration](#configuration)
 - [Common Commands](#common-commands)
+- [Troubleshooting](#troubleshooting)
 - [How It Works](#how-it-works)
 - [Beta Track](#beta-track)
 - [Contributing](#contributing)
@@ -75,13 +76,35 @@ codex exec "Reply with: ready"
 
 The public npm package target is <code>codex-claw@0.1.0-alpha.0</code>.
 
-After the first npm alpha publish, the install path will be:
+After the first npm alpha publish, start without a global install:
 
-~~~bash
+~~~powershell
+# Windows PowerShell
 npx codex-claw@alpha
+npm exec codex-claw@alpha -- doctor
 ~~~
 
-Until then, use the source checkout above. The package is intentionally tagged as alpha so early releases do not claim a stable <code>latest</code> workflow.
+~~~bash
+# macOS and Linux
+npx codex-claw@alpha
+npm exec codex-claw@alpha -- doctor
+~~~
+
+For a pinned global CLI during alpha:
+
+~~~bash
+npm install -g codex-claw@alpha
+codex-claw doctor
+codex-claw --help
+~~~
+
+Update by re-running <code>npx codex-claw@alpha</code> or reinstalling the alpha tag:
+
+~~~bash
+npm install -g codex-claw@alpha
+~~~
+
+Until the first alpha package exists on npm, use the source checkout above. The package is intentionally tagged as alpha so early releases do not claim a stable <code>latest</code> workflow.
 
 ## Terminal Demo
 
@@ -102,7 +125,16 @@ Local source readiness check:
 
 ~~~console
 $ node packages/codex-claw/bin/codex-claw.js doctor
-Environment looks good.
+[ok] Node.js: Node.js 20.19.5
+[ok] npm: 10.8.2
+[warn] npm auth: npm auth unavailable. Run `npm login` before publishing codex-claw@alpha.
+[ok] pnpm: 9.15.4
+[ok] git: git version 2.51.0.windows.1
+[ok] git worktree: Current directory is a git worktree.
+[ok] Codex CLI: codex-cli 0.61.0
+[ok] state directory: .codex-claw can be created on first run.
+[ok] port: Port 3000 is available.
+Environment is usable with 1 warning(s).
 ~~~
 
 Manual source workflow:
@@ -141,7 +173,25 @@ pnpm lint                # run ESLint
 pnpm landing:dev         # start the landing page
 pnpm landing:build       # build the landing page
 pnpm pack:codex-claw     # inspect npm package contents
+pnpm smoke:codex-claw    # run npx against the packed local tarball
+pnpm smoke:codex-claw:npm # run npx against codex-claw@alpha once published
 pnpm release:codex-claw  # publish alpha package with the alpha dist-tag
+~~~
+
+## Troubleshooting
+
+| Symptom | What to run |
+| --- | --- |
+| <code>npm auth unavailable</code> | Run <code>npm login</code>, then <code>npm whoami</code> before publishing |
+| <code>codex-claw@alpha was not found on npm</code> | The alpha package has not been published yet; use the source checkout or publish with <code>pnpm release:codex-claw</code> |
+| <code>Port 3000 is already in use</code> | Stop the process using the port or run <code>codex-claw doctor --port 3001</code> |
+| <code>Codex CLI was not found</code> | Install Codex CLI, run <code>codex login</code>, or pass <code>--codex-command &lt;cmd&gt;</code> |
+
+Package readiness checks:
+
+~~~bash
+pnpm smoke:codex-claw:pack
+pnpm smoke:codex-claw:npm
 ~~~
 
 ## How It Works
