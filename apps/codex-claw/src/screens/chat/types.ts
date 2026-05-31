@@ -93,4 +93,41 @@ export type PathsPayload = {
   stateDir: string
   sessionsDir: string
   storePath: string
+  workspacesStorePath: string
+  workspace: WorkspaceSummary
+}
+
+export type WorkspaceSummary = {
+  id: string
+  name: string
+  codexCommand: string
+  codexSandbox: string
+  codexWorkdir: string
+  stateDir: string
+  createdAt: number
+  updatedAt: number
+}
+
+export type WorkspaceHealthStatus = 'ok' | 'warning' | 'error'
+
+export type WorkspaceHealthCheck = {
+  id: string
+  label: string
+  status: WorkspaceHealthStatus
+  summary: string
+  detail?: string
+  fixCommand?: string
+}
+
+export type WorkspaceHealthPayload = {
+  ok: boolean
+  workspaceId: string
+  checkedAt: number
+  checks: Array<WorkspaceHealthCheck>
+}
+
+export type WorkspaceListResponse = {
+  activeWorkspaceId: string
+  workspaces: Array<WorkspaceSummary>
+  health: WorkspaceHealthPayload
 }
