@@ -281,3 +281,47 @@ export type CodexTaskRecord = {
 export type TaskListResponse = {
   tasks: Array<CodexTaskRecord>
 }
+
+export type CodexArtifactType =
+  | 'file'
+  | 'patch'
+  | 'terminal-log'
+  | 'export'
+  | 'package'
+  | 'image'
+
+export type CodexArtifactRecord = {
+  id: string
+  sessionKey: string
+  runId?: string
+  path: string
+  redactedPath: string
+  type: CodexArtifactType
+  createdAt: number
+  safeToOpen: boolean
+  size?: number
+  source: 'command-log' | 'detected-file' | 'export-manifest'
+}
+
+export type ArtifactManifestEntry = {
+  id: string
+  type: CodexArtifactType
+  path: string
+  createdAt: number
+  runId?: string
+  safeToOpen: boolean
+  size?: number
+  source: CodexArtifactRecord['source']
+}
+
+export type ArtifactManifest = {
+  exportedAt: string
+  sessionKey: string
+  artifactCount: number
+  artifacts: Array<ArtifactManifestEntry>
+}
+
+export type ArtifactListResponse = {
+  artifacts: Array<CodexArtifactRecord>
+  manifest: ArtifactManifest
+}

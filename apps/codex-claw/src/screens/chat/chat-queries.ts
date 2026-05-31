@@ -1,6 +1,7 @@
 import { getMessageTimestamp, normalizeSessions, readError } from './utils'
 import type { QueryClient } from '@tanstack/react-query'
 import type {
+  ArtifactListResponse,
   GatewayMessage,
   GitReviewPayload,
   HistoryResponse,
@@ -33,6 +34,9 @@ export const chatQueryKeys = {
   },
   workspaces: ['chat', 'workspaces'] as const,
   tasks: ['chat', 'tasks'] as const,
+  artifacts: function artifacts(sessionKey: string, friendlyId: string) {
+    return ['chat', 'artifacts', sessionKey, friendlyId] as const
+  },
   history: function history(friendlyId: string, sessionKey: string) {
     return ['chat', 'history', friendlyId, sessionKey] as const
   },
@@ -108,6 +112,18 @@ export async function fetchHistory(payload: {
   const res = await fetch(`/api/history?${query.toString()}`)
   if (!res.ok) throw new Error(await readError(res))
   return (await res.json()) as HistoryResponse
+}
+
+export async function fetchArtifacts(payload: {
+  sessionKey: string
+  friendlyId: string
+}): Promise<ArtifactListResponse> {
+  const query = new URLSearchParams()
+  if (payload.sessionKey) query.set('sessionKey', payload.sessionKey)
+  if (payload.friendlyId) query.set('friendlyId', payload.friendlyId)
+  const res = await fetch('/api/artifacts?' + query.toString())
+  if (!res.ok) throw new Error(await readError(res))
+  return (await res.json()) as ArtifactListResponse
 }
 
 export async function fetchGatewayStatus(): Promise<GatewayStatusResponse> {

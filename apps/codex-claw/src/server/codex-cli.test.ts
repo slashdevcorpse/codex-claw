@@ -6,7 +6,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   createCodexWorkspace,
   deleteCodexWorkspace,
+  getCodexArtifactFile,
   getCodexPaths,
+  listCodexArtifacts,
   listCodexSessions,
   listCodexWorkspaces,
   mergeAssistantText,
@@ -303,5 +305,58 @@ describe('codex workspace registry', function () {
       }),
     )
     expect(listCodexSessions().sessions).toEqual([])
+  })
+
+  it('lists local artifacts with redacted manifests and safe downloads', function () {
+    const paths = getCodexPaths()
+    const artifactDir = path.join(paths.stateDir, 'artifacts', 'artifact-test')
+    const artifactPath = path.join(artifactDir, 'run-1.log')
+    mkdirSync(artifactDir, { recursive: true })
+    writeFileSync(artifactPath, 'command output')
+    writeFileSync(
+      path.join(paths.stateDir, 'artifacts.json'),
+      JSON.stringify({
+        version: 1,
+        artifacts: [
+          {
+            id: 'artifact-1',
+            sessionKey: 'artifact-test',
+            runId: 'run-1',
+            path: artifactPath,
+            redactedPath: '$CODEX_CLAW_STATE/artifacts/artifact-test/run-1.log',
+            type: 'terminal-log',
+            createdAt: 400,
+            safeToOpen: true,
+            size: 14,
+            source: 'command-log',
+          },
+        ],
+      }),
+    )
+    resetCodexServerStateForTests()
+
+    const payload = listCodexArtifacts({ sessionKey: 'artifact-test' })
+
+    expect(payload.artifacts).toEqual([
+      expect.objectContaining({
+        id: 'artifact-1',
+        path: artifactPath,
+        redactedPath: '$CODEX_CLAW_STATE/artifacts/artifact-test/run-1.log',
+        type: 'terminal-log',
+        safeToOpen: true,
+      }),
+    ])
+    expect(payload.manifest.artifacts).toEqual([
+      expect.objectContaining({
+        id: 'artifact-1',
+        path: '$CODEX_CLAW_STATE/artifacts/artifact-test/run-1.log',
+      }),
+    ])
+    expect(
+      getCodexArtifactFile({
+        id: 'artifact-1',
+        sessionKey: 'artifact-test',
+      }).content.toString('utf8'),
+    ).toBe('command output')
   })
 })
