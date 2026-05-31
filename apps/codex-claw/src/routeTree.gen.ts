@@ -14,6 +14,7 @@ import { Route as ConnectRouteImport } from './routes/connect'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ChatSessionKeyRouteImport } from './routes/chat/$sessionKey'
 import { Route as ApiWorkspacesRouteImport } from './routes/api/workspaces'
+import { Route as ApiTasksRouteImport } from './routes/api/tasks'
 import { Route as ApiStreamRouteImport } from './routes/api/stream'
 import { Route as ApiSessionsRouteImport } from './routes/api/sessions'
 import { Route as ApiSendRouteImport } from './routes/api/send'
@@ -47,6 +48,11 @@ const ChatSessionKeyRoute = ChatSessionKeyRouteImport.update({
 const ApiWorkspacesRoute = ApiWorkspacesRouteImport.update({
   id: '/api/workspaces',
   path: '/api/workspaces',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiTasksRoute = ApiTasksRouteImport.update({
+  id: '/api/tasks',
+  path: '/api/tasks',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiStreamRoute = ApiStreamRouteImport.update({
@@ -108,6 +114,7 @@ export interface FileRoutesByFullPath {
   '/api/send': typeof ApiSendRoute
   '/api/sessions': typeof ApiSessionsRoute
   '/api/stream': typeof ApiStreamRoute
+  '/api/tasks': typeof ApiTasksRoute
   '/api/workspaces': typeof ApiWorkspacesRoute
   '/chat/$sessionKey': typeof ChatSessionKeyRoute
 }
@@ -124,6 +131,7 @@ export interface FileRoutesByTo {
   '/api/send': typeof ApiSendRoute
   '/api/sessions': typeof ApiSessionsRoute
   '/api/stream': typeof ApiStreamRoute
+  '/api/tasks': typeof ApiTasksRoute
   '/api/workspaces': typeof ApiWorkspacesRoute
   '/chat/$sessionKey': typeof ChatSessionKeyRoute
 }
@@ -141,6 +149,7 @@ export interface FileRoutesById {
   '/api/send': typeof ApiSendRoute
   '/api/sessions': typeof ApiSessionsRoute
   '/api/stream': typeof ApiStreamRoute
+  '/api/tasks': typeof ApiTasksRoute
   '/api/workspaces': typeof ApiWorkspacesRoute
   '/chat/$sessionKey': typeof ChatSessionKeyRoute
 }
@@ -159,6 +168,7 @@ export interface FileRouteTypes {
     | '/api/send'
     | '/api/sessions'
     | '/api/stream'
+    | '/api/tasks'
     | '/api/workspaces'
     | '/chat/$sessionKey'
   fileRoutesByTo: FileRoutesByTo
@@ -175,6 +185,7 @@ export interface FileRouteTypes {
     | '/api/send'
     | '/api/sessions'
     | '/api/stream'
+    | '/api/tasks'
     | '/api/workspaces'
     | '/chat/$sessionKey'
   id:
@@ -191,6 +202,7 @@ export interface FileRouteTypes {
     | '/api/send'
     | '/api/sessions'
     | '/api/stream'
+    | '/api/tasks'
     | '/api/workspaces'
     | '/chat/$sessionKey'
   fileRoutesById: FileRoutesById
@@ -208,6 +220,7 @@ export interface RootRouteChildren {
   ApiSendRoute: typeof ApiSendRoute
   ApiSessionsRoute: typeof ApiSessionsRoute
   ApiStreamRoute: typeof ApiStreamRoute
+  ApiTasksRoute: typeof ApiTasksRoute
   ApiWorkspacesRoute: typeof ApiWorkspacesRoute
   ChatSessionKeyRoute: typeof ChatSessionKeyRoute
 }
@@ -247,6 +260,13 @@ declare module '@tanstack/react-router' {
       path: '/api/workspaces'
       fullPath: '/api/workspaces'
       preLoaderRoute: typeof ApiWorkspacesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/tasks': {
+      id: '/api/tasks'
+      path: '/api/tasks'
+      fullPath: '/api/tasks'
+      preLoaderRoute: typeof ApiTasksRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/stream': {
@@ -328,6 +348,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiSendRoute: ApiSendRoute,
   ApiSessionsRoute: ApiSessionsRoute,
   ApiStreamRoute: ApiStreamRoute,
+  ApiTasksRoute: ApiTasksRoute,
   ApiWorkspacesRoute: ApiWorkspacesRoute,
   ChatSessionKeyRoute: ChatSessionKeyRoute,
 }
