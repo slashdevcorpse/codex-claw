@@ -40,8 +40,8 @@ pnpm dev
 From this repository:
 
 ~~~bash
-pnpm -C packages/codex-claw exec codex-claw --help
-pnpm -C packages/codex-claw exec codex-claw doctor
+node packages/codex-claw/bin/codex-claw.js --help
+node packages/codex-claw/bin/codex-claw.js doctor
 ~~~
 
 ## Commands
