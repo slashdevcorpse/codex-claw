@@ -26,7 +26,7 @@ function printHelp() {
   process.stdout.write(`codex-claw CLI\n\n`)
   process.stdout.write(`Usage:\n`)
   process.stdout.write(`  codex-claw                 Create and start a new project\n`)
-  process.stdout.write(`  codex-claw init [dir]      Initialize a new project (legacy)\n`)
+  process.stdout.write(`  codex-claw init [dir]      Initialize a project in a directory\n`)
   process.stdout.write(`  codex-claw dev             Run development server\n`)
   process.stdout.write(`  codex-claw build           Build project\n`)
   process.stdout.write(`  codex-claw preview         Preview production build\n`)
