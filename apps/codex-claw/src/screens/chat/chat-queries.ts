@@ -3,6 +3,8 @@ import type { QueryClient } from '@tanstack/react-query'
 import type {
   GatewayMessage,
   HistoryResponse,
+  RepoContextPayload,
+  RepoContextSelection,
   SessionListResponse,
   SessionMeta,
   WorkspaceListResponse,
@@ -110,6 +112,19 @@ export async function deleteWorkspace(
   })
   if (!res.ok) throw new Error(await readError(res))
   return (await res.json()) as WorkspaceListResponse
+}
+
+export async function fetchRepoContext(
+  selections: Array<RepoContextSelection>,
+): Promise<RepoContextPayload> {
+  const query = new URLSearchParams()
+  for (const selection of selections) {
+    if (selection.path.trim()) query.append('selected', selection.path.trim())
+  }
+  const suffix = query.toString() ? '?' + query.toString() : ''
+  const res = await fetch('/api/repo-context' + suffix)
+  if (!res.ok) throw new Error(await readError(res))
+  return (await res.json()) as RepoContextPayload
 }
 
 export function updateHistoryMessages(
