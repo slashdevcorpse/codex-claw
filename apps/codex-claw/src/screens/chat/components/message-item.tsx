@@ -121,7 +121,7 @@ export function assistantPartRenderOrder(
       }
       continue
     }
-    if (showToolMessages) {
+    if (part.type === 'toolCall' && showToolMessages) {
       order.push('toolCall')
     }
   }
