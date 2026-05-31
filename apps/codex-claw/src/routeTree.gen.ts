@@ -17,6 +17,7 @@ import { Route as ApiWorkspacesRouteImport } from './routes/api/workspaces'
 import { Route as ApiTasksRouteImport } from './routes/api/tasks'
 import { Route as ApiStreamRouteImport } from './routes/api/stream'
 import { Route as ApiSessionsRouteImport } from './routes/api/sessions'
+import { Route as ApiSessionBundleRouteImport } from './routes/api/session-bundle'
 import { Route as ApiSendRouteImport } from './routes/api/send'
 import { Route as ApiRunEventsRouteImport } from './routes/api/run-events'
 import { Route as ApiRepoContextRouteImport } from './routes/api/repo-context'
@@ -66,6 +67,11 @@ const ApiStreamRoute = ApiStreamRouteImport.update({
 const ApiSessionsRoute = ApiSessionsRouteImport.update({
   id: '/api/sessions',
   path: '/api/sessions',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiSessionBundleRoute = ApiSessionBundleRouteImport.update({
+  id: '/api/session-bundle',
+  path: '/api/session-bundle',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiSendRoute = ApiSendRouteImport.update({
@@ -133,6 +139,7 @@ export interface FileRoutesByFullPath {
   '/api/repo-context': typeof ApiRepoContextRoute
   '/api/run-events': typeof ApiRunEventsRoute
   '/api/send': typeof ApiSendRoute
+  '/api/session-bundle': typeof ApiSessionBundleRoute
   '/api/sessions': typeof ApiSessionsRoute
   '/api/stream': typeof ApiStreamRoute
   '/api/tasks': typeof ApiTasksRoute
@@ -153,6 +160,7 @@ export interface FileRoutesByTo {
   '/api/repo-context': typeof ApiRepoContextRoute
   '/api/run-events': typeof ApiRunEventsRoute
   '/api/send': typeof ApiSendRoute
+  '/api/session-bundle': typeof ApiSessionBundleRoute
   '/api/sessions': typeof ApiSessionsRoute
   '/api/stream': typeof ApiStreamRoute
   '/api/tasks': typeof ApiTasksRoute
@@ -174,6 +182,7 @@ export interface FileRoutesById {
   '/api/repo-context': typeof ApiRepoContextRoute
   '/api/run-events': typeof ApiRunEventsRoute
   '/api/send': typeof ApiSendRoute
+  '/api/session-bundle': typeof ApiSessionBundleRoute
   '/api/sessions': typeof ApiSessionsRoute
   '/api/stream': typeof ApiStreamRoute
   '/api/tasks': typeof ApiTasksRoute
@@ -196,6 +205,7 @@ export interface FileRouteTypes {
     | '/api/repo-context'
     | '/api/run-events'
     | '/api/send'
+    | '/api/session-bundle'
     | '/api/sessions'
     | '/api/stream'
     | '/api/tasks'
@@ -216,6 +226,7 @@ export interface FileRouteTypes {
     | '/api/repo-context'
     | '/api/run-events'
     | '/api/send'
+    | '/api/session-bundle'
     | '/api/sessions'
     | '/api/stream'
     | '/api/tasks'
@@ -236,6 +247,7 @@ export interface FileRouteTypes {
     | '/api/repo-context'
     | '/api/run-events'
     | '/api/send'
+    | '/api/session-bundle'
     | '/api/sessions'
     | '/api/stream'
     | '/api/tasks'
@@ -257,6 +269,7 @@ export interface RootRouteChildren {
   ApiRepoContextRoute: typeof ApiRepoContextRoute
   ApiRunEventsRoute: typeof ApiRunEventsRoute
   ApiSendRoute: typeof ApiSendRoute
+  ApiSessionBundleRoute: typeof ApiSessionBundleRoute
   ApiSessionsRoute: typeof ApiSessionsRoute
   ApiStreamRoute: typeof ApiStreamRoute
   ApiTasksRoute: typeof ApiTasksRoute
@@ -320,6 +333,13 @@ declare module '@tanstack/react-router' {
       path: '/api/sessions'
       fullPath: '/api/sessions'
       preLoaderRoute: typeof ApiSessionsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/session-bundle': {
+      id: '/api/session-bundle'
+      path: '/api/session-bundle'
+      fullPath: '/api/session-bundle'
+      preLoaderRoute: typeof ApiSessionBundleRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/send': {
@@ -409,6 +429,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiRepoContextRoute: ApiRepoContextRoute,
   ApiRunEventsRoute: ApiRunEventsRoute,
   ApiSendRoute: ApiSendRoute,
+  ApiSessionBundleRoute: ApiSessionBundleRoute,
   ApiSessionsRoute: ApiSessionsRoute,
   ApiStreamRoute: ApiStreamRoute,
   ApiTasksRoute: ApiTasksRoute,
