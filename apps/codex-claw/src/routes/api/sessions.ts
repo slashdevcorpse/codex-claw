@@ -11,9 +11,19 @@ import {
 export const Route = createFileRoute('/api/sessions')({
   server: {
     handlers: {
-      GET: async () => {
+      GET: async ({ request }) => {
         try {
-          return json(await listCodexSessions())
+          const url = new URL(request.url)
+          return json(
+            await listCodexSessions({
+              query: url.searchParams.get('q') ?? undefined,
+              filter: url.searchParams.get('filter') ?? undefined,
+              tag: url.searchParams.get('tag') ?? undefined,
+              includeArchived:
+                url.searchParams.get('includeArchived') === '1' ||
+                url.searchParams.get('includeArchived') === 'true',
+            }),
+          )
         } catch (err) {
           return json(
             {
@@ -62,6 +72,11 @@ export const Route = createFileRoute('/api/sessions')({
             typeof body.friendlyId === 'string' ? body.friendlyId.trim() : ''
           const label =
             typeof body.label === 'string' ? body.label.trim() : undefined
+          const tags = Array.isArray(body.tags)
+            ? body.tags.filter((tag): tag is string => typeof tag === 'string')
+            : undefined
+          const archived =
+            typeof body.archived === 'boolean' ? body.archived : undefined
           let sessionKey = rawSessionKey
 
           if (!sessionKey && rawFriendlyId) {
@@ -76,7 +91,12 @@ export const Route = createFileRoute('/api/sessions')({
             )
           }
 
-          const payload = await patchCodexSession({ key: sessionKey, label })
+          const payload = await patchCodexSession({
+            key: sessionKey,
+            label,
+            tags,
+            archived,
+          })
           return json({
             ok: true,
             sessionKey: payload.key,

@@ -9,6 +9,7 @@ import type {
   RepoContextSelection,
   SessionListResponse,
   SessionMeta,
+  SessionSummary,
   TaskListResponse,
   WorkspaceListResponse,
   WorkspaceSummary,
@@ -21,6 +22,15 @@ type GatewayStatusResponse = {
 
 export const chatQueryKeys = {
   sessions: ['chat', 'sessions'] as const,
+  sessionSearch: function sessionSearch(params: SessionSearchParams) {
+    return [
+      'chat',
+      'session-search',
+      params.query ?? '',
+      params.filter ?? 'workspace',
+      params.tag ?? '',
+    ] as const
+  },
   workspaces: ['chat', 'workspaces'] as const,
   tasks: ['chat', 'tasks'] as const,
   history: function history(friendlyId: string, sessionKey: string) {
@@ -28,11 +38,64 @@ export const chatQueryKeys = {
   },
 } as const
 
+export type SessionSearchFilter =
+  | 'workspace'
+  | 'pinned'
+  | 'recent'
+  | 'failed'
+  | 'tagged'
+  | 'archived'
+
+export type SessionSearchParams = {
+  query?: string
+  filter?: SessionSearchFilter
+  tag?: string
+  signal?: AbortSignal
+}
+
 export async function fetchSessions(): Promise<Array<SessionMeta>> {
-  const res = await fetch('/api/sessions')
+  const res = await fetch('/api/sessions?includeArchived=1')
   if (!res.ok) throw new Error(await readError(res))
   const data = (await res.json()) as SessionListResponse
   return normalizeSessions(data.sessions)
+}
+
+export async function fetchSessionSearch(
+  params: SessionSearchParams,
+): Promise<Array<SessionMeta>> {
+  const query = new URLSearchParams({ includeArchived: '1' })
+  const rawQuery = params.query?.trim() ?? ''
+  const filter = params.filter ?? 'workspace'
+  if (rawQuery) query.set('q', rawQuery)
+  if (filter !== 'workspace' && filter !== 'pinned') {
+    query.set('filter', filter)
+  }
+  if (params.tag?.trim()) query.set('tag', params.tag.trim())
+  const res = await fetch('/api/sessions?' + query.toString(), {
+    signal: params.signal,
+  })
+  if (!res.ok) throw new Error(await readError(res))
+  const data = (await res.json()) as SessionListResponse
+  return normalizeSessions(data.sessions)
+}
+
+export async function updateSessionMetadata(payload: {
+  sessionKey: string
+  tags?: Array<string>
+  archived?: boolean
+}): Promise<SessionMeta> {
+  const res = await fetch('/api/sessions', {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  if (!res.ok) throw new Error(await readError(res))
+  const data = (await res.json()) as { entry?: SessionSummary }
+  if (!data.entry) {
+    throw new Error('Session metadata update returned no session.')
+  }
+  const [session] = normalizeSessions([data.entry])
+  return session
 }
 
 export async function fetchHistory(payload: {

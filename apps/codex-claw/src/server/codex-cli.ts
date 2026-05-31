@@ -56,6 +56,8 @@ type SessionRecord = {
   label?: string
   title?: string
   derivedTitle?: string
+  tags?: Array<string>
+  archived?: boolean
   updatedAt: number
   messages: Array<CodexMessage>
   lastMessage?: CodexMessage | null
@@ -64,6 +66,15 @@ type SessionRecord = {
 type SessionStore = {
   version: 1
   sessions: Array<SessionRecord>
+}
+
+type SessionFilter = 'all' | 'recent' | 'failed' | 'tagged' | 'archived'
+
+type ListCodexSessionsInput = {
+  query?: string
+  filter?: string
+  tag?: string
+  includeArchived?: boolean
 }
 
 type CodexTaskStatus =
@@ -810,7 +821,106 @@ function titleFromMessage(message: string) {
   return `${title.slice(0, 45)}...`
 }
 
-function normalizeSession(session: SessionRecord) {
+function normalizeTag(value: unknown) {
+  if (typeof value !== 'string') return ''
+  return value.trim().toLowerCase().replace(/\s+/g, '-')
+}
+
+function normalizeTags(value: unknown): Array<string> {
+  if (!Array.isArray(value)) return []
+  const tags: Array<string> = []
+  const seen = new Set<string>()
+  for (const item of value) {
+    const tag = normalizeTag(item)
+    if (!tag || seen.has(tag)) continue
+    seen.add(tag)
+    tags.push(tag)
+  }
+  return tags
+}
+
+function normalizeSessionFilter(value: unknown): SessionFilter {
+  if (
+    value === 'recent' ||
+    value === 'failed' ||
+    value === 'tagged' ||
+    value === 'archived'
+  ) {
+    return value
+  }
+  return 'all'
+}
+
+function searchValue(value: unknown): string {
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value)
+  }
+  if (!value || typeof value !== 'object') return ''
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return ''
+  }
+}
+
+function searchTextFromMessage(message: CodexMessage) {
+  const parts: Array<string> = []
+  if (message.role) parts.push(message.role)
+  if (message.toolName) parts.push(message.toolName)
+  if (message.details) parts.push(searchValue(message.details))
+  if (Array.isArray(message.content)) {
+    for (const part of message.content) {
+      if (part.type === 'text') parts.push(String(part.text ?? ''))
+      if (part.type === 'thinking') parts.push(String(part.thinking ?? ''))
+      if (part.type === 'toolCall') {
+        parts.push(String(part.name ?? ''))
+        parts.push(searchValue(part.arguments))
+        parts.push(String(part.partialJson ?? ''))
+      }
+    }
+  }
+  return parts.join(' ')
+}
+
+function searchTextFromSession(session: SessionRecord) {
+  return [
+    session.key,
+    session.friendlyId,
+    session.label,
+    session.title,
+    session.derivedTitle,
+    normalizeTags(session.tags).join(' '),
+    ...session.messages.map(searchTextFromMessage),
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+}
+
+function failedTaskSessionKeys() {
+  const failedKeys = new Set<string>()
+  for (const task of readTaskStore().tasks) {
+    if (task.status !== 'failed') continue
+    failedKeys.add(task.sessionKey)
+    failedKeys.add(deriveFriendlyIdFromKey(task.sessionKey))
+  }
+  return failedKeys
+}
+
+function sessionHasFailedRun(
+  session: SessionRecord,
+  failedSessionKeys = new Set<string>(),
+) {
+  if (failedSessionKeys.has(session.key)) return true
+  if (failedSessionKeys.has(session.friendlyId)) return true
+  return session.messages.some((message) => message.isError === true)
+}
+
+function normalizeSession(
+  session: SessionRecord,
+  failedSessionKeys = new Set<string>(),
+) {
   const lastMessage =
     session.lastMessage ??
     (session.messages.length > 0
@@ -822,6 +932,9 @@ function normalizeSession(session: SessionRecord) {
     label: session.label,
     title: session.title,
     derivedTitle: session.derivedTitle,
+    tags: normalizeTags(session.tags),
+    archived: session.archived === true,
+    hasFailedRun: sessionHasFailedRun(session, failedSessionKeys),
     updatedAt: session.updatedAt,
     lastMessage,
   }
@@ -1965,11 +2078,46 @@ export function getCodexHistory(input: {
   }
 }
 
-export function listCodexSessions() {
+export function listCodexSessions(input: ListCodexSessionsInput = {}) {
   const store = readStore()
+  const query = typeof input.query === 'string' ? input.query.trim() : ''
+  const normalizedQuery = query.toLowerCase()
+  const filter = normalizeSessionFilter(input.filter)
+  const tag = normalizeTag(input.tag)
+  const failedKeys = failedTaskSessionKeys()
+  let sessions = store.sessions.slice()
+
+  if (filter === 'archived') {
+    sessions = sessions.filter((session) => session.archived === true)
+  } else if (!input.includeArchived) {
+    sessions = sessions.filter((session) => session.archived !== true)
+  }
+
+  if (filter === 'failed') {
+    sessions = sessions.filter((session) =>
+      sessionHasFailedRun(session, failedKeys),
+    )
+  }
+
+  if (filter === 'tagged') {
+    sessions = sessions.filter((session) => normalizeTags(session.tags).length)
+  }
+
+  if (tag) {
+    sessions = sessions.filter((session) =>
+      normalizeTags(session.tags).includes(tag),
+    )
+  }
+
+  if (normalizedQuery) {
+    sessions = sessions.filter((session) =>
+      searchTextFromSession(session).includes(normalizedQuery),
+    )
+  }
+
   return {
-    sessions: store.sessions
-      .map(normalizeSession)
+    sessions: sessions
+      .map((session) => normalizeSession(session, failedKeys))
       .sort((a, b) => b.updatedAt - a.updatedAt),
   }
 }
@@ -2077,12 +2225,34 @@ export function retryCodexTask(taskId: string) {
   }
 }
 
-export function patchCodexSession(input: { key?: string; label?: string }) {
+export function patchCodexSession(input: {
+  key?: string
+  label?: string
+  tags?: Array<string>
+  archived?: boolean
+}) {
   const session = ensureSession(input.key || randomUUID(), input.label)
+  let changed = false
+
+  if (Array.isArray(input.tags)) {
+    session.tags = normalizeTags(input.tags)
+    changed = true
+  }
+
+  if (typeof input.archived === 'boolean') {
+    session.archived = input.archived
+    changed = true
+  }
+
+  if (changed) {
+    session.updatedAt = Date.now()
+    writeStore(readStore())
+  }
+
   return {
     ok: true,
     key: session.key,
-    entry: normalizeSession(session),
+    entry: normalizeSession(session, failedTaskSessionKeys()),
   }
 }
 

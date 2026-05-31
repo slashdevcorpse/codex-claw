@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -10,6 +10,7 @@ import {
   listCodexSessions,
   listCodexWorkspaces,
   mergeAssistantText,
+  patchCodexSession,
   patchCodexWorkspace,
   processCodexJsonLine,
   resetCodexServerStateForTests,
@@ -189,5 +190,118 @@ describe('codex workspace registry', function () {
       activeWorkspaceId: 'default',
       workspaces: [expect.objectContaining({ id: 'default' })],
     })
+  })
+
+  it('searches session titles, message text, tool summaries, and tags', function () {
+    const storePath = getCodexPaths().storePath
+    mkdirSync(path.dirname(storePath), { recursive: true })
+    writeFileSync(
+      storePath,
+      JSON.stringify({
+        version: 1,
+        sessions: [
+          {
+            key: 'release-session',
+            friendlyId: 'release-session',
+            title: 'Release checklist',
+            derivedTitle: 'Release checklist',
+            tags: ['alpha', 'publishing'],
+            updatedAt: 300,
+            messages: [
+              {
+                role: 'user',
+                content: [{ type: 'text', text: 'prepare npm alpha notes' }],
+                timestamp: 300,
+              },
+            ],
+          },
+          {
+            key: 'failure-session',
+            friendlyId: 'failure-session',
+            title: 'CI triage',
+            derivedTitle: 'CI triage',
+            updatedAt: 200,
+            messages: [
+              {
+                role: 'toolResult',
+                toolName: 'command_execution',
+                isError: true,
+                details: { command: 'pnpm test', exitCode: 1 },
+                content: [{ type: 'text', text: 'vitest failure output' }],
+                timestamp: 200,
+              },
+            ],
+          },
+          {
+            key: 'archived-session',
+            friendlyId: 'archived-session',
+            title: 'Old workspace notes',
+            derivedTitle: 'Old workspace notes',
+            archived: true,
+            updatedAt: 100,
+            messages: [
+              {
+                role: 'assistant',
+                content: [{ type: 'text', text: 'legacy archive note' }],
+                timestamp: 100,
+              },
+            ],
+          },
+        ],
+      }),
+    )
+    resetCodexServerStateForTests()
+
+    expect(listCodexSessions({ query: 'npm alpha' }).sessions).toEqual([
+      expect.objectContaining({ friendlyId: 'release-session' }),
+    ])
+    expect(
+      listCodexSessions({
+        query: 'vitest failure',
+        filter: 'failed',
+        includeArchived: true,
+      }).sessions,
+    ).toEqual([
+      expect.objectContaining({
+        friendlyId: 'failure-session',
+        hasFailedRun: true,
+      }),
+    ])
+    expect(listCodexSessions({ filter: 'tagged' }).sessions).toEqual([
+      expect.objectContaining({
+        friendlyId: 'release-session',
+        tags: ['alpha', 'publishing'],
+      }),
+    ])
+    expect(listCodexSessions({ filter: 'archived' }).sessions).toEqual([
+      expect.objectContaining({
+        friendlyId: 'archived-session',
+        archived: true,
+      }),
+    ])
+    expect(listCodexSessions().sessions).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ friendlyId: 'archived-session' }),
+      ]),
+    )
+  })
+
+  it('stores normalized session tags and archive state', function () {
+    patchCodexSession({
+      key: 'taggable-session',
+      tags: [' Release Notes ', 'release-notes', 'QA'],
+      archived: true,
+    })
+
+    expect(
+      listCodexSessions({ includeArchived: true }).sessions,
+    ).toContainEqual(
+      expect.objectContaining({
+        friendlyId: 'taggable-session',
+        tags: ['release-notes', 'qa'],
+        archived: true,
+      }),
+    )
+    expect(listCodexSessions().sessions).toEqual([])
   })
 })
