@@ -15,6 +15,7 @@
     "format": "pnpm -C apps/codex-claw format",
     "check": "pnpm -C apps/codex-claw check",
     "pack:codex-claw": "pnpm -C packages/codex-claw exec npm pack --dry-run",
+    "package:codex-claw": "node -e \"require('node:fs').mkdirSync('dist/release',{recursive:true})\" && pnpm -C packages/codex-claw exec npm pack --pack-destination ../../dist/release",
     "release:codex-claw": "pnpm -C packages/codex-claw exec npm publish --tag alpha --access public",
     "bump:codex-claw:patch": "pnpm -C packages/codex-claw version patch --no-git-tag-version",
     "bump:codex-claw:minor": "pnpm -C packages/codex-claw version minor --no-git-tag-version",
