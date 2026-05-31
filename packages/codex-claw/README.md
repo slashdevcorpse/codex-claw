@@ -7,7 +7,7 @@ The package is designed for an <code>npx codex-claw@alpha</code> first-run workf
 ## Status
 
 - Package name: <code>codex-claw</code>
-- Current version: <code>0.1.0-alpha.0</code>
+- Current version: <code>0.1.0-alpha.1</code>
 - Release channel: <code>alpha</code>
 - Runtime dependency: your installed and authenticated Codex CLI
 
