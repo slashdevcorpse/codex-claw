@@ -459,7 +459,7 @@ export function subscribeCodexEvents(
   }
 }
 
-export async function sendCodexPrompt(input: SendCodexPromptInput) {
+export function sendCodexPrompt(input: SendCodexPromptInput) {
   const store = readStore()
   const session = ensureSession(input.sessionKey || 'main')
   const prompt = buildUserPrompt(input)
@@ -491,7 +491,7 @@ export async function sendCodexPrompt(input: SendCodexPromptInput) {
   return { runId, sessionKey: session.key }
 }
 
-export async function getCodexHistory(input: {
+export function getCodexHistory(input: {
   sessionKey?: string
   friendlyId?: string
   limit?: number
@@ -509,7 +509,7 @@ export async function getCodexHistory(input: {
   }
 }
 
-export async function listCodexSessions() {
+export function listCodexSessions() {
   const store = readStore()
   return {
     sessions: store.sessions
@@ -518,7 +518,7 @@ export async function listCodexSessions() {
   }
 }
 
-export async function patchCodexSession(input: {
+export function patchCodexSession(input: {
   key?: string
   label?: string
 }) {
@@ -530,7 +530,7 @@ export async function patchCodexSession(input: {
   }
 }
 
-export async function resolveCodexSession(key: string) {
+export function resolveCodexSession(key: string) {
   const store = readStore()
   const session = findSession(store, key)
   return {
@@ -539,7 +539,7 @@ export async function resolveCodexSession(key: string) {
   }
 }
 
-export async function deleteCodexSession(key: string) {
+export function deleteCodexSession(key: string) {
   const store = readStore()
   const index = store.sessions.findIndex(
     (session) => session.key === key || session.friendlyId === key,
@@ -551,7 +551,7 @@ export async function deleteCodexSession(key: string) {
   return { ok: true, sessionKey: key }
 }
 
-export async function codexCliCheck() {
+export function codexCliCheck() {
   const command = getCodexCommand()
   const result = spawnSync(
     process.platform === 'win32' ? `${command} --version` : command,
