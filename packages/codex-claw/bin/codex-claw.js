@@ -10,7 +10,7 @@ import readline from 'node:readline/promises'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const LOCAL_TEMPLATE_ROOT = path.resolve(__dirname, '..', '..', '..')
-const REPO_URL = 'https://github.com/ibelick/webclaw'
+const REPO_URL = 'https://github.com/slashdevcorpse/codex-claw'
 
 function printBanner() {
   process.stdout.write(`              ▄▄          ▄▄               \n`)
@@ -18,26 +18,26 @@ function printBanner() {
   process.stdout.write(`██   ██ ▄█▀█▄ ████▄ ▄████ ██  ▀▀█▄ ██   ██ \n`)
   process.stdout.write(`██ █ ██ ██▄█▀ ██ ██ ██    ██ ▄█▀██ ██ █ ██ \n`)
   process.stdout.write(` ██▀██  ▀█▄▄▄ ████▀ ▀████ ██ ▀█▄██  ██▀██ \n\n`)
-  process.stdout.write(`Fast web client for OpenClaw\n`)
-  process.stdout.write(`https://webclaw.dev/\n\n`)
+  process.stdout.write(`Alpha web client for Codex CLI\n`)
+  process.stdout.write(`https://github.com/slashdevcorpse/codex-claw\n\n`)
 }
 
 function printHelp() {
-  process.stdout.write(`webclaw CLI\n\n`)
+  process.stdout.write(`codex-claw CLI\n\n`)
   process.stdout.write(`Usage:\n`)
-  process.stdout.write(`  webclaw                 Create and start a new project\n`)
-  process.stdout.write(`  webclaw init [dir]      Initialize a new project (legacy)\n`)
-  process.stdout.write(`  webclaw dev             Run development server\n`)
-  process.stdout.write(`  webclaw build           Build project\n`)
-  process.stdout.write(`  webclaw preview         Preview production build\n`)
-  process.stdout.write(`  webclaw test            Run tests\n`)
-  process.stdout.write(`  webclaw lint            Run lint\n`)
-  process.stdout.write(`  webclaw doctor          Validate local setup\n`)
+  process.stdout.write(`  codex-claw                 Create and start a new project\n`)
+  process.stdout.write(`  codex-claw init [dir]      Initialize a new project (legacy)\n`)
+  process.stdout.write(`  codex-claw dev             Run development server\n`)
+  process.stdout.write(`  codex-claw build           Build project\n`)
+  process.stdout.write(`  codex-claw preview         Preview production build\n`)
+  process.stdout.write(`  codex-claw test            Run tests\n`)
+  process.stdout.write(`  codex-claw lint            Run lint\n`)
+  process.stdout.write(`  codex-claw doctor          Validate local setup\n`)
   process.stdout.write(`\nOptions:\n`)
   process.stdout.write(`  --project-name <name>   Project directory name\n`)
-  process.stdout.write(`  --gateway-url <url>     CLAWDBOT_GATEWAY_URL value\n`)
-  process.stdout.write(`  --gateway-token <token> CLAWDBOT_GATEWAY_TOKEN value\n`)
-  process.stdout.write(`  --gateway-password <pw> CLAWDBOT_GATEWAY_PASSWORD value\n`)
+  process.stdout.write(`  --codex-command <cmd>   CODEX_CLI_COMMAND value\n`)
+  process.stdout.write(`  --codex-sandbox <mode>  CODEX_CLI_SANDBOX value\n`)
+  process.stdout.write(`  --codex-workdir <dir>   CODEX_CLI_WORKDIR value\n`)
   process.stdout.write(`  --port <port>           Dev server port\n`)
   process.stdout.write(`  --yes                   Accept defaults (non-interactive)\n`)
   process.stdout.write(`  --no-start              Do not auto-run install + dev\n`)
@@ -52,9 +52,9 @@ function parseCliArgs(args) {
   const positionals = []
   const optionsWithValues = new Set([
     '--project-name',
-    '--gateway-url',
-    '--gateway-token',
-    '--gateway-password',
+    '--codex-command',
+    '--codex-sandbox',
+    '--codex-workdir',
     '--port',
   ])
 
@@ -117,7 +117,7 @@ function detectPackageManager(cwd) {
 }
 
 function detectProjectRoot(cwd) {
-  const appDir = path.join(cwd, 'apps', 'webclaw')
+  const appDir = path.join(cwd, 'apps', 'codex-claw')
   const appPackage = path.join(appDir, 'package.json')
   if (fs.existsSync(appPackage)) {
     return { mode: 'monorepo', appDir }
@@ -133,7 +133,7 @@ function runProjectScript(scriptName) {
   const detected = detectProjectRoot(process.cwd())
   if (!detected) {
     process.stderr.write(
-      `No WebClaw project found in this directory. Run \`npx webclaw\` first.\n`,
+      `No CodexClaw project found in this directory. Run \`npx codex-claw\` first.\n`,
     )
     process.exit(1)
   }
@@ -142,7 +142,7 @@ function runProjectScript(scriptName) {
 
   if (detected.mode === 'monorepo') {
     if (packageManager === 'pnpm') {
-      runCommand('pnpm', ['-C', 'apps/webclaw', scriptName], process.cwd())
+      runCommand('pnpm', ['-C', 'apps/codex-claw', scriptName], process.cwd())
       return
     }
     runCommand(packageManager, ['run', scriptName], detected.appDir)
@@ -165,8 +165,8 @@ function copyDir(sourceDir, targetDir) {
     if (entry.name === 'node_modules') continue
     if (entry.name === '.git') continue
     if (entry.name === '.env.local') continue
-    if (entry.name === '.openclaw') continue
-    if (entry.name === '.webclaw') continue
+    if (entry.name === '.codex-claw') continue
+    if (entry.name === '.codex') continue
     if (entry.name === '.tanstack') continue
     if (entry.name === '.DS_Store') continue
     const sourcePath = path.join(sourceDir, entry.name)
@@ -193,7 +193,7 @@ function cloneRepo(targetDir) {
 
 function getLocalTemplateSource() {
   const rootPackage = path.join(LOCAL_TEMPLATE_ROOT, 'package.json')
-  const appPackage = path.join(LOCAL_TEMPLATE_ROOT, 'apps', 'webclaw', 'package.json')
+  const appPackage = path.join(LOCAL_TEMPLATE_ROOT, 'apps', 'codex-claw', 'package.json')
   if (!fs.existsSync(rootPackage) || !fs.existsSync(appPackage)) {
     return null
   }
@@ -217,7 +217,7 @@ function populateTemplate(targetDir, isCurrentDir) {
     return
   }
 
-  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'webclaw-'))
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-claw-'))
   const tempCloneDir = path.join(tempRoot, 'repo')
   cloneRepo(tempCloneDir)
   copyDir(tempCloneDir, targetDir)
@@ -241,8 +241,8 @@ function ensureGitRepository(targetDir) {
 }
 
 function resolveEnvFile(targetDir) {
-  const monorepoEnv = path.join(targetDir, 'apps', 'webclaw', '.env.local')
-  if (fs.existsSync(path.join(targetDir, 'apps', 'webclaw'))) {
+  const monorepoEnv = path.join(targetDir, 'apps', 'codex-claw', '.env.local')
+  if (fs.existsSync(path.join(targetDir, 'apps', 'codex-claw'))) {
     return monorepoEnv
   }
   return path.join(targetDir, '.env.local')
@@ -262,8 +262,8 @@ function parsePort(value, fallback) {
 }
 
 function setDevPort(targetDir, port) {
-  const appPackagePath = fs.existsSync(path.join(targetDir, 'apps', 'webclaw'))
-    ? path.join(targetDir, 'apps', 'webclaw', 'package.json')
+  const appPackagePath = fs.existsSync(path.join(targetDir, 'apps', 'codex-claw'))
+    ? path.join(targetDir, 'apps', 'codex-claw', 'package.json')
     : path.join(targetDir, 'package.json')
 
   if (!fs.existsSync(appPackagePath)) return
@@ -288,12 +288,12 @@ function writeEnvFile(targetDir, envValues) {
   ensureDir(path.dirname(envFile))
 
   const lines = [
-    `CLAWDBOT_GATEWAY_URL=${envValues.gatewayUrl}`,
-    `CLAWDBOT_GATEWAY_TOKEN=${envValues.gatewayToken}`,
+    `CODEX_CLI_COMMAND=${envValues.codexCommand}`,
+    `CODEX_CLI_SANDBOX=${envValues.codexSandbox}`,
   ]
 
-  if (envValues.gatewayPassword.length > 0) {
-    lines.push(`CLAWDBOT_GATEWAY_PASSWORD=${envValues.gatewayPassword}`)
+  if (envValues.codexWorkdir.length > 0) {
+    lines.push(`CODEX_CLI_WORKDIR=${envValues.codexWorkdir}`)
   }
 
   fs.writeFileSync(envFile, `${lines.join('\n')}\n`)
@@ -329,8 +329,8 @@ async function maybeSetupEnv(targetDir, options, envValues) {
     if (!shouldCreate) {
       process.stdout.write(
         `Skipping env file. Create it later at ${envFile} with:\n` +
-          `CLAWDBOT_GATEWAY_URL=...\n` +
-          `CLAWDBOT_GATEWAY_TOKEN=...\n\n`,
+          `CODEX_CLI_COMMAND=...\n` +
+          `CODEX_CLI_SANDBOX=...\n\n`,
       )
       return
     }
@@ -349,13 +349,13 @@ async function maybeSetupEnv(targetDir, options, envValues) {
       }
     }
 
-    const gatewayUrl = await askQuestion(rl, 'CLAWDBOT_GATEWAY_URL: ')
-    const gatewayToken = await askQuestion(rl, 'CLAWDBOT_GATEWAY_TOKEN: ')
+    const codexCommand = await askQuestion(rl, 'CODEX_CLI_COMMAND: ')
+    const codexSandbox = await askQuestion(rl, 'CODEX_CLI_SANDBOX: ')
 
     writeEnvFile(targetDir, {
-      gatewayUrl,
-      gatewayToken,
-      gatewayPassword: '',
+      codexCommand,
+      codexSandbox,
+      codexWorkdir: '',
     })
   } finally {
     rl.close()
@@ -375,6 +375,20 @@ function installDependencies(targetDir) {
 function startProject(targetDir) {
   const packageManager = detectPackageManager(targetDir)
   runCommand(packageManager, ['run', 'dev'], targetDir)
+}
+
+function hasCommand(command) {
+  if (process.platform === 'win32') {
+    return spawnSync(`${command} --version`, {
+      stdio: 'ignore',
+      shell: true,
+    }).status === 0
+  }
+
+  if (spawnSync(command, ['--version'], { stdio: 'ignore' }).status === 0) {
+    return true
+  }
+  return false
 }
 
 async function initProject(rawTarget, options, bootstrapConfig) {
@@ -419,12 +433,12 @@ async function initProject(rawTarget, options, bootstrapConfig) {
 
   await maybeSetupEnv(targetDir, options, bootstrapConfig?.envValues)
 
-  process.stdout.write(`\nWebClaw project created at ${targetDir}\n\n`)
+  process.stdout.write(`\nCodexClaw project created at ${targetDir}\n\n`)
 
   if (bootstrapConfig && bootstrapConfig.autoStart) {
     process.stdout.write(`Installing dependencies...\n`)
     installDependencies(targetDir)
-    process.stdout.write(`Starting WebClaw on port ${bootstrapConfig?.port ?? 3000}...\n\n`)
+    process.stdout.write(`Starting CodexClaw on port ${bootstrapConfig?.port ?? 3000}...\n\n`)
     startProject(targetDir)
     return
   }
@@ -440,20 +454,20 @@ async function askBootstrapConfig(defaultProjectName, parsedArgs) {
     parsedArgs.flags.has('--yes') || !process.stdin.isTTY || !process.stdout.isTTY
 
   const initialProjectName =
-    parsedArgs.values.get('--project-name') || defaultProjectName || 'webclaw'
-  const initialGatewayUrl =
-    parsedArgs.values.get('--gateway-url') || 'ws://127.0.0.1:18789'
-  const initialGatewayToken = parsedArgs.values.get('--gateway-token') || ''
-  const initialGatewayPassword = parsedArgs.values.get('--gateway-password') || ''
+    parsedArgs.values.get('--project-name') || defaultProjectName || 'codex-claw'
+  const initialCodexCommand =
+    parsedArgs.values.get('--codex-command') || 'codex'
+  const initialCodexSandbox = parsedArgs.values.get('--codex-sandbox') || 'read-only'
+  const initialCodexWorkdir = parsedArgs.values.get('--codex-workdir') || ''
   const initialPort = parsePort(parsedArgs.values.get('--port') || 3000, 3000)
 
   if (nonInteractive) {
     return {
       projectName: initialProjectName,
       envValues: {
-        gatewayUrl: initialGatewayUrl,
-        gatewayToken: initialGatewayToken,
-        gatewayPassword: initialGatewayPassword,
+        codexCommand: initialCodexCommand,
+        codexSandbox: initialCodexSandbox,
+        codexWorkdir: initialCodexWorkdir,
       },
       port: initialPort,
       autoStart: !parsedArgs.flags.has('--no-start'),
@@ -472,19 +486,19 @@ async function askBootstrapConfig(defaultProjectName, parsedArgs) {
     )
     const projectName = projectNameInput || initialProjectName
 
-    const gatewayUrlInput = await askQuestion(
+    const codexCommandInput = await askQuestion(
       rl,
-      `CLAWDBOT_GATEWAY_URL [${initialGatewayUrl}]: `,
+      `CODEX_CLI_COMMAND [${initialCodexCommand}]: `,
     )
-    const gatewayUrl = gatewayUrlInput || initialGatewayUrl
+    const codexCommand = codexCommandInput || initialCodexCommand
 
-    const gatewayTokenInput = await askQuestion(
+    const codexSandboxInput = await askQuestion(
       rl,
-      'CLAWDBOT_GATEWAY_TOKEN (optional): ',
+      `CODEX_CLI_SANDBOX [${initialCodexSandbox}]: `,
     )
-    const gatewayPasswordInput = await askQuestion(
+    const codexWorkdirInput = await askQuestion(
       rl,
-      'CLAWDBOT_GATEWAY_PASSWORD (optional): ',
+      'CODEX_CLI_WORKDIR (optional): ',
     )
 
     const portInput = await askQuestion(rl, `Port [${initialPort}]: `)
@@ -493,9 +507,9 @@ async function askBootstrapConfig(defaultProjectName, parsedArgs) {
     return {
       projectName,
       envValues: {
-        gatewayUrl,
-        gatewayToken: gatewayTokenInput || initialGatewayToken,
-        gatewayPassword: gatewayPasswordInput || initialGatewayPassword,
+        codexCommand,
+        codexSandbox: codexSandboxInput || initialCodexSandbox,
+        codexWorkdir: codexWorkdirInput || initialCodexWorkdir,
       },
       port,
       autoStart: !parsedArgs.flags.has('--no-start'),
@@ -507,7 +521,8 @@ async function askBootstrapConfig(defaultProjectName, parsedArgs) {
 
 function doctor() {
   const nodeMajor = Number(process.versions.node.split('.')[0] || 0)
-  const hasPnpm = spawnSync('pnpm', ['--version'], { stdio: 'ignore' }).status === 0
+  const hasPnpm = hasCommand('pnpm')
+  const hasCodex = hasCommand('codex')
   const issues = []
 
   if (nodeMajor < 20) {
@@ -515,6 +530,9 @@ function doctor() {
   }
   if (!hasPnpm) {
     issues.push('pnpm is recommended but was not found in PATH.')
+  }
+  if (!hasCodex) {
+    issues.push('Codex CLI was not found in PATH.')
   }
 
   if (issues.length === 0) {
