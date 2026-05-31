@@ -25,6 +25,7 @@ import { ChatMessageList } from './components/chat-message-list'
 import { ChatComposer } from './components/chat-composer'
 import { GitReviewPanel } from './components/git-review-panel'
 import { McpHealthPanel } from './components/mcp-health-panel'
+import { TaskQueuePanel } from './components/task-queue-panel'
 import { GatewayStatusMessage } from './components/gateway-status-message'
 import {
   hasPendingGeneration,
@@ -73,6 +74,7 @@ export function ChatScreen({
   const [isRedirecting, setIsRedirecting] = useState(false)
   const [gitReviewOpen, setGitReviewOpen] = useState(false)
   const [mcpHealthOpen, setMcpHealthOpen] = useState(false)
+  const [taskQueueOpen, setTaskQueueOpen] = useState(false)
   const { headerRef, composerRef, mainRef, pinGroupMinHeight, headerHeight } =
     useChatMeasurements()
   const [waitingForResponse, setWaitingForResponse] = useState(
@@ -633,6 +635,12 @@ export function ChatScreen({
             onToggleGitReview={() => setGitReviewOpen((current) => !current)}
             mcpHealthOpen={mcpHealthOpen}
             onToggleMcpHealth={() => setMcpHealthOpen((current) => !current)}
+            taskQueueOpen={taskQueueOpen}
+            onToggleTaskQueue={() => setTaskQueueOpen((current) => !current)}
+          />
+          <TaskQueuePanel
+            open={taskQueueOpen}
+            onClose={() => setTaskQueueOpen(false)}
           />
           <McpHealthPanel
             open={mcpHealthOpen}

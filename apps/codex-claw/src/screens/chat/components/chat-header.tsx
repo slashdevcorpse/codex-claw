@@ -1,6 +1,7 @@
 import { memo } from 'react'
 import { HugeiconsIcon } from '@hugeicons/react'
 import {
+  CheckmarkCircle01Icon,
   GitBranchIcon,
   Menu01Icon,
   Settings01Icon,
@@ -25,6 +26,8 @@ type ChatHeaderProps = {
   onToggleGitReview?: () => void
   mcpHealthOpen?: boolean
   onToggleMcpHealth?: () => void
+  taskQueueOpen?: boolean
+  onToggleTaskQueue?: () => void
 }
 
 function ChatHeaderComponent({
@@ -41,6 +44,8 @@ function ChatHeaderComponent({
   onToggleGitReview,
   mcpHealthOpen = false,
   onToggleMcpHealth,
+  taskQueueOpen = false,
+  onToggleTaskQueue,
 }: ChatHeaderProps) {
   return (
     <div
@@ -82,6 +87,21 @@ function ChatHeaderComponent({
             aria-label="Inspect MCP tools"
           >
             <HugeiconsIcon icon={Settings01Icon} size={20} strokeWidth={1.5} />
+          </Button>
+        ) : null}
+        {onToggleTaskQueue ? (
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            onClick={onToggleTaskQueue}
+            className={taskQueueOpen ? 'bg-primary-100' : undefined}
+            aria-label="Open task queue"
+          >
+            <HugeiconsIcon
+              icon={CheckmarkCircle01Icon}
+              size={20}
+              strokeWidth={1.5}
+            />
           </Button>
         ) : null}
         {showExport ? (
