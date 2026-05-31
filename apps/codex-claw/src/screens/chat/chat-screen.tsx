@@ -26,6 +26,7 @@ import { ChatComposer } from './components/chat-composer'
 import { GitReviewPanel } from './components/git-review-panel'
 import { McpHealthPanel } from './components/mcp-health-panel'
 import { TaskQueuePanel } from './components/task-queue-panel'
+import { ArtifactsPanel } from './components/artifacts-panel'
 import { GatewayStatusMessage } from './components/gateway-status-message'
 import {
   hasPendingGeneration,
@@ -75,6 +76,7 @@ export function ChatScreen({
   const [gitReviewOpen, setGitReviewOpen] = useState(false)
   const [mcpHealthOpen, setMcpHealthOpen] = useState(false)
   const [taskQueueOpen, setTaskQueueOpen] = useState(false)
+  const [artifactsOpen, setArtifactsOpen] = useState(false)
   const { headerRef, composerRef, mainRef, pinGroupMinHeight, headerHeight } =
     useChatMeasurements()
   const [waitingForResponse, setWaitingForResponse] = useState(
@@ -637,10 +639,18 @@ export function ChatScreen({
             onToggleMcpHealth={() => setMcpHealthOpen((current) => !current)}
             taskQueueOpen={taskQueueOpen}
             onToggleTaskQueue={() => setTaskQueueOpen((current) => !current)}
+            artifactsOpen={artifactsOpen}
+            onToggleArtifacts={() => setArtifactsOpen((current) => !current)}
           />
           <TaskQueuePanel
             open={taskQueueOpen}
             onClose={() => setTaskQueueOpen(false)}
+          />
+          <ArtifactsPanel
+            open={artifactsOpen}
+            sessionKey={activeSessionKey}
+            friendlyId={activeFriendlyId}
+            onClose={() => setArtifactsOpen(false)}
           />
           <McpHealthPanel
             open={mcpHealthOpen}

@@ -2,6 +2,7 @@ import { memo } from 'react'
 import { HugeiconsIcon } from '@hugeicons/react'
 import {
   CheckmarkCircle01Icon,
+  FolderFileStorageIcon,
   GitBranchIcon,
   Menu01Icon,
   Settings01Icon,
@@ -28,6 +29,8 @@ type ChatHeaderProps = {
   onToggleMcpHealth?: () => void
   taskQueueOpen?: boolean
   onToggleTaskQueue?: () => void
+  artifactsOpen?: boolean
+  onToggleArtifacts?: () => void
 }
 
 function ChatHeaderComponent({
@@ -46,6 +49,8 @@ function ChatHeaderComponent({
   onToggleMcpHealth,
   taskQueueOpen = false,
   onToggleTaskQueue,
+  artifactsOpen = false,
+  onToggleArtifacts,
 }: ChatHeaderProps) {
   return (
     <div
@@ -99,6 +104,21 @@ function ChatHeaderComponent({
           >
             <HugeiconsIcon
               icon={CheckmarkCircle01Icon}
+              size={20}
+              strokeWidth={1.5}
+            />
+          </Button>
+        ) : null}
+        {onToggleArtifacts ? (
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            onClick={onToggleArtifacts}
+            className={artifactsOpen ? 'bg-primary-100' : undefined}
+            aria-label="Open artifacts"
+          >
+            <HugeiconsIcon
+              icon={FolderFileStorageIcon}
               size={20}
               strokeWidth={1.5}
             />
