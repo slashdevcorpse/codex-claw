@@ -11,10 +11,12 @@ import { Link, useNavigate } from '@tanstack/react-router'
 import { useChatSettings } from '../hooks/use-chat-settings'
 import { useDeleteSession } from '../hooks/use-delete-session'
 import { useRenameSession } from '../hooks/use-rename-session'
+import { useSessionMetadata } from '../hooks/use-session-metadata'
 import { useSessionShortcuts } from '../hooks/use-session-shortcuts'
 import { SettingsDialog } from './settings-dialog'
 import { SessionRenameDialog } from './sidebar/session-rename-dialog'
 import { SessionDeleteDialog } from './sidebar/session-delete-dialog'
+import { SessionTagsDialog } from './sidebar/session-tags-dialog'
 import { SidebarSessions } from './sidebar/sidebar-sessions'
 import { CommandSessionDialog } from './command-session'
 import type { SessionMeta } from '../types'
@@ -72,6 +74,7 @@ function ChatSidebarComponent({
   } = useChatSettings()
   const { deleteSession } = useDeleteSession()
   const { renameSession } = useRenameSession()
+  const { updateMetadata } = useSessionMetadata()
   const transition = {
     duration: 0.15,
     ease: isCollapsed ? 'easeIn' : 'easeOut',
@@ -85,6 +88,10 @@ function ChatSidebarComponent({
   const [deleteSessionKey, setDeleteSessionKey] = useState<string | null>(null)
   const [deleteFriendlyId, setDeleteFriendlyId] = useState<string | null>(null)
   const [deleteSessionTitle, setDeleteSessionTitle] = useState('')
+  const [tagsDialogOpen, setTagsDialogOpen] = useState(false)
+  const [tagsSessionKey, setTagsSessionKey] = useState<string | null>(null)
+  const [tagsSessionTitle, setTagsSessionTitle] = useState('')
+  const [tagsSessionTags, setTagsSessionTags] = useState<Array<string>>([])
   const [searchDialogOpen, setSearchDialogOpen] = useState(false)
   const navigate = useNavigate()
 
@@ -120,6 +127,34 @@ function ChatSidebarComponent({
     }
     setRenameDialogOpen(false)
     setRenameSessionKey(null)
+  }
+
+  function handleOpenTags(session: SessionMeta) {
+    setTagsSessionKey(session.key)
+    setTagsSessionTitle(
+      session.label ||
+        session.title ||
+        session.derivedTitle ||
+        session.friendlyId,
+    )
+    setTagsSessionTags(session.tags)
+    setTagsDialogOpen(true)
+  }
+
+  function handleSaveTags(tags: Array<string>) {
+    if (tagsSessionKey) {
+      void updateMetadata({ sessionKey: tagsSessionKey, tags })
+    }
+    setTagsDialogOpen(false)
+    setTagsSessionKey(null)
+    setTagsSessionTags([])
+  }
+
+  function handleToggleArchive(session: SessionMeta) {
+    void updateMetadata({
+      sessionKey: session.key,
+      archived: !session.archived,
+    })
   }
 
   function handleOpenDelete(session: SessionMeta) {
@@ -312,6 +347,8 @@ function ChatSidebarComponent({
                   activeFriendlyId={activeFriendlyId}
                   onSelect={onSelectSession}
                   onRename={handleOpenRename}
+                  onEditTags={handleOpenTags}
+                  onToggleArchive={handleToggleArchive}
                   onDelete={handleOpenDelete}
                 />
               </div>
@@ -385,6 +422,15 @@ function ChatSidebarComponent({
         onCancel={() => setRenameDialogOpen(false)}
       />
 
+      <SessionTagsDialog
+        open={tagsDialogOpen}
+        onOpenChange={setTagsDialogOpen}
+        sessionTitle={tagsSessionTitle}
+        tags={tagsSessionTags}
+        onSave={handleSaveTags}
+        onCancel={() => setTagsDialogOpen(false)}
+      />
+
       <SessionDeleteDialog
         open={deleteDialogOpen}
         onOpenChange={setDeleteDialogOpen}
@@ -410,6 +456,9 @@ function areSessionsEqual(
     if (prev.label !== next.label) return false
     if (prev.title !== next.title) return false
     if (prev.derivedTitle !== next.derivedTitle) return false
+    if (prev.archived !== next.archived) return false
+    if (prev.hasFailedRun !== next.hasFailedRun) return false
+    if (prev.tags.join(',') !== next.tags.join(',')) return false
     if (prev.updatedAt !== next.updatedAt) return false
   }
   return true

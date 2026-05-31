@@ -24,6 +24,8 @@ type SidebarSessionsProps = {
   defaultOpen?: boolean
   onSelect?: () => void
   onRename: (session: SessionMeta) => void
+  onEditTags: (session: SessionMeta) => void
+  onToggleArchive: (session: SessionMeta) => void
   onDelete: (session: SessionMeta) => void
 }
 
@@ -33,6 +35,8 @@ export const SidebarSessions = memo(function SidebarSessions({
   defaultOpen = true,
   onSelect,
   onRename,
+  onEditTags,
+  onToggleArchive,
   onDelete,
 }: SidebarSessionsProps) {
   const { pinnedSessionKeys, togglePinnedSession } = usePinnedSessions()
@@ -43,13 +47,24 @@ export const SidebarSessions = memo(function SidebarSessions({
   )
 
   const pinnedSessions = useMemo(
-    () => sessions.filter((session) => pinnedSessionSet.has(session.key)),
+    () =>
+      sessions.filter(
+        (session) => !session.archived && pinnedSessionSet.has(session.key),
+      ),
     [sessions, pinnedSessionSet],
   )
 
   const unpinnedSessions = useMemo(
-    () => sessions.filter((session) => !pinnedSessionSet.has(session.key)),
+    () =>
+      sessions.filter(
+        (session) => !session.archived && !pinnedSessionSet.has(session.key),
+      ),
     [sessions, pinnedSessionSet],
+  )
+
+  const archivedSessions = useMemo(
+    () => sessions.filter((session) => session.archived),
+    [sessions],
   )
 
   const handleTogglePin = useCallback(
@@ -89,6 +104,8 @@ export const SidebarSessions = memo(function SidebarSessions({
                   onSelect={onSelect}
                   onTogglePin={handleTogglePin}
                   onRename={onRename}
+                  onEditTags={onEditTags}
+                  onToggleArchive={onToggleArchive}
                   onDelete={onDelete}
                 />
               ))}
@@ -106,6 +123,29 @@ export const SidebarSessions = memo(function SidebarSessions({
                   onSelect={onSelect}
                   onTogglePin={handleTogglePin}
                   onRename={onRename}
+                  onEditTags={onEditTags}
+                  onToggleArchive={onToggleArchive}
+                  onDelete={onDelete}
+                />
+              ))}
+
+              {archivedSessions.length > 0 ? (
+                <div className="my-1 border-t border-primary-200/80 pt-1 text-[11px] font-medium text-primary-600">
+                  Archived
+                </div>
+              ) : null}
+
+              {archivedSessions.map((session) => (
+                <SessionItem
+                  key={session.key}
+                  session={session}
+                  active={session.friendlyId === activeFriendlyId}
+                  isPinned={pinnedSessionSet.has(session.key)}
+                  onSelect={onSelect}
+                  onTogglePin={handleTogglePin}
+                  onRename={onRename}
+                  onEditTags={onEditTags}
+                  onToggleArchive={onToggleArchive}
                   onDelete={onDelete}
                 />
               ))}
@@ -128,6 +168,8 @@ function areSidebarSessionsEqual(
   if (prev.defaultOpen !== next.defaultOpen) return false
   if (prev.onSelect !== next.onSelect) return false
   if (prev.onRename !== next.onRename) return false
+  if (prev.onEditTags !== next.onEditTags) return false
+  if (prev.onToggleArchive !== next.onToggleArchive) return false
   if (prev.onDelete !== next.onDelete) return false
   if (prev.sessions === next.sessions) return true
   if (prev.sessions.length !== next.sessions.length) return false
@@ -139,6 +181,9 @@ function areSidebarSessionsEqual(
     if (prevSession.label !== nextSession.label) return false
     if (prevSession.title !== nextSession.title) return false
     if (prevSession.derivedTitle !== nextSession.derivedTitle) return false
+    if (prevSession.archived !== nextSession.archived) return false
+    if (prevSession.hasFailedRun !== nextSession.hasFailedRun) return false
+    if (prevSession.tags.join(',') !== nextSession.tags.join(',')) return false
     if (prevSession.updatedAt !== nextSession.updatedAt) return false
   }
   return true
