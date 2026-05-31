@@ -117,6 +117,39 @@ type CodexTaskEvent = {
   note?: string
 }
 
+type CodexRunEventKind =
+  | 'prompt-start'
+  | 'assistant-delta'
+  | 'tool-call'
+  | 'tool-result'
+  | 'final-message'
+  | 'exit'
+  | 'error'
+  | 'status'
+
+type CodexRunTokenMetrics = {
+  inputTokens?: number
+  outputTokens?: number
+  totalTokens?: number
+  contextTokens?: number
+  raw?: Record<string, unknown>
+}
+
+type CodexRunTimelineEvent = {
+  id: string
+  kind: CodexRunEventKind
+  at: number
+  relativeMs: number
+  label: string
+  message?: string
+  commandName?: string
+  toolCallId?: string
+  exitCode?: number | null
+  status?: string
+  tokenMetrics?: CodexRunTokenMetrics
+  details?: Record<string, unknown>
+}
+
 type CodexTaskSnapshot = {
   sessionKey: string
   message: string
@@ -145,6 +178,8 @@ type CodexTaskRecord = {
   retryOf?: string
   snapshot: CodexTaskSnapshot
   events: Array<CodexTaskEvent>
+  timeline: Array<CodexRunTimelineEvent>
+  tokenMetrics?: CodexRunTokenMetrics
 }
 
 type TaskStore = {
@@ -711,6 +746,98 @@ function normalizeTaskStatus(value: string): CodexTaskStatus {
   return 'failed'
 }
 
+function normalizeRunEventKind(value: unknown): CodexRunEventKind {
+  if (
+    value === 'prompt-start' ||
+    value === 'assistant-delta' ||
+    value === 'tool-call' ||
+    value === 'tool-result' ||
+    value === 'final-message' ||
+    value === 'exit' ||
+    value === 'error' ||
+    value === 'status'
+  ) {
+    return value
+  }
+  return 'status'
+}
+
+function numericMetric(value: unknown) {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? Math.max(0, Math.floor(value))
+    : undefined
+}
+
+function normalizeTokenMetrics(
+  value: unknown,
+): CodexRunTokenMetrics | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const record = value as Record<string, unknown>
+  const metrics: CodexRunTokenMetrics = {}
+  metrics.inputTokens =
+    numericMetric(record.input_tokens) ??
+    numericMetric(record.prompt_tokens) ??
+    numericMetric(record.inputTokens) ??
+    numericMetric(record.promptTokens)
+  metrics.outputTokens =
+    numericMetric(record.output_tokens) ??
+    numericMetric(record.completion_tokens) ??
+    numericMetric(record.outputTokens) ??
+    numericMetric(record.completionTokens)
+  metrics.totalTokens =
+    numericMetric(record.total_tokens) ??
+    numericMetric(record.totalTokens) ??
+    (typeof metrics.inputTokens === 'number' &&
+    typeof metrics.outputTokens === 'number'
+      ? metrics.inputTokens + metrics.outputTokens
+      : undefined)
+  metrics.contextTokens =
+    numericMetric(record.context_tokens) ??
+    numericMetric(record.context_window) ??
+    numericMetric(record.context_window_tokens) ??
+    numericMetric(record.contextTokens) ??
+    numericMetric(record.contextWindow)
+
+  const hasMetrics =
+    typeof metrics.inputTokens === 'number' ||
+    typeof metrics.outputTokens === 'number' ||
+    typeof metrics.totalTokens === 'number' ||
+    typeof metrics.contextTokens === 'number'
+  if (!hasMetrics) return undefined
+  metrics.raw = record
+  return metrics
+}
+
+function normalizeTimelineEvent(
+  event: CodexRunTimelineEvent,
+): CodexRunTimelineEvent {
+  return {
+    id: typeof event.id === 'string' ? event.id : randomUUID(),
+    kind: normalizeRunEventKind(event.kind),
+    at: typeof event.at === 'number' ? event.at : Date.now(),
+    relativeMs:
+      typeof event.relativeMs === 'number' && Number.isFinite(event.relativeMs)
+        ? Math.max(0, Math.floor(event.relativeMs))
+        : 0,
+    label: typeof event.label === 'string' ? event.label : 'Run event',
+    message: typeof event.message === 'string' ? event.message : undefined,
+    commandName:
+      typeof event.commandName === 'string' ? event.commandName : undefined,
+    toolCallId:
+      typeof event.toolCallId === 'string' ? event.toolCallId : undefined,
+    exitCode:
+      typeof event.exitCode === 'number' || event.exitCode === null
+        ? event.exitCode
+        : undefined,
+    status: typeof event.status === 'string' ? event.status : undefined,
+    tokenMetrics: normalizeTokenMetrics(event.tokenMetrics),
+    details:
+      event.details && typeof event.details === 'object'
+        ? (event.details)
+        : undefined,
+  }
+}
+
 function normalizeTaskRecord(value: CodexTaskRecord): CodexTaskRecord {
   const status = normalizeTaskStatus(value.status)
   return {
@@ -723,6 +850,10 @@ function normalizeTaskRecord(value: CodexTaskRecord): CodexTaskRecord {
         at: event.at,
         note: typeof event.note === 'string' ? event.note : undefined,
       })),
+    timeline: Array.isArray(value.timeline)
+      ? value.timeline.map(normalizeTimelineEvent)
+      : [],
+    tokenMetrics: normalizeTokenMetrics(value.tokenMetrics),
   }
 }
 
@@ -786,7 +917,9 @@ function readArtifactStore() {
   if (artifactStoreCache) return artifactStoreCache
   const artifactStorePath = getArtifactStorePath()
   try {
-    const parsed = JSON.parse(readFileSync(artifactStorePath, 'utf8')) as unknown
+    const parsed = JSON.parse(
+      readFileSync(artifactStorePath, 'utf8'),
+    ) as unknown
     artifactStoreCache = isArtifactStore(parsed)
       ? {
           version: 1,
@@ -863,6 +996,77 @@ function updateTask(
   return task
 }
 
+function timelineMessage(value: string) {
+  const normalized = value.replace(/\s+/g, ' ').trim()
+  if (normalized.length <= 500) return normalized
+  return normalized.slice(0, 497) + '...'
+}
+
+function eventRelativeMs(task: CodexTaskRecord, at: number) {
+  return Math.max(0, at - (task.startedAt ?? task.createdAt))
+}
+
+function appendRunEvent(
+  taskId: string,
+  input: Omit<CodexRunTimelineEvent, 'id' | 'at' | 'relativeMs'> & {
+    at?: number
+  },
+) {
+  const store = readTaskStore()
+  const task = store.tasks.find((item) => item.id === taskId)
+  if (!task) return null
+  const at = input.at ?? Date.now()
+  const event: CodexRunTimelineEvent = {
+    id: randomUUID(),
+    kind: input.kind,
+    at,
+    relativeMs: eventRelativeMs(task, at),
+    label: input.label,
+    message:
+      typeof input.message === 'string'
+        ? timelineMessage(input.message)
+        : undefined,
+    commandName: input.commandName,
+    toolCallId: input.toolCallId,
+    exitCode: input.exitCode,
+    status: input.status,
+    tokenMetrics: input.tokenMetrics,
+    details: input.details,
+  }
+  task.timeline.push(event)
+  if (task.timeline.length > 300) {
+    task.timeline = task.timeline.slice(task.timeline.length - 300)
+  }
+  if (input.tokenMetrics) task.tokenMetrics = input.tokenMetrics
+  task.updatedAt = at
+  writeTaskStore(store)
+  return event
+}
+
+function appendStatusRunEvent(
+  taskId: string,
+  status: string,
+  label: string,
+  details?: Record<string, unknown>,
+) {
+  return appendRunEvent(taskId, {
+    kind: 'status',
+    label,
+    status,
+    details,
+  })
+}
+
+function appendTokenMetrics(taskId: string, metrics?: CodexRunTokenMetrics) {
+  if (!metrics) return
+  appendRunEvent(taskId, {
+    kind: 'status',
+    label: 'Token metrics captured',
+    status: 'metrics',
+    tokenMetrics: metrics,
+  })
+}
+
 function createTaskRecord(input: {
   id: string
   sessionKey: string
@@ -886,6 +1090,21 @@ function createTaskRecord(input: {
     retryOf: input.retryOf,
     snapshot: input.snapshot,
     events: [{ status: 'queued', at: now }],
+    timeline: [
+      {
+        id: randomUUID(),
+        kind: 'prompt-start',
+        at: now,
+        relativeMs: 0,
+        label: 'Prompt queued',
+        status: 'queued',
+        details: {
+          runProfile: input.runProfile,
+          hasAttachments: Boolean(input.snapshot.attachments?.length),
+          hasContext: Boolean(input.snapshot.contextBlock?.trim()),
+        },
+      },
+    ],
   }
   writeTask(task)
   return task
@@ -1106,7 +1325,11 @@ function sanitizeArtifactSegment(value: string) {
 
 function isPathInside(parent: string, child: string) {
   const relative = path.relative(parent, child)
-  return Boolean(relative) && !relative.startsWith('..') && !path.isAbsolute(relative)
+  return (
+    Boolean(relative) &&
+    !relative.startsWith('..') &&
+    !path.isAbsolute(relative)
+  )
 }
 
 function redactArtifactPath(filePath: string) {
@@ -1168,7 +1391,9 @@ function artifactId(sessionKey: string, artifactPath: string, runId?: string) {
 
 function upsertArtifact(record: CodexArtifactRecord) {
   const store = readArtifactStore()
-  const index = store.artifacts.findIndex((artifact) => artifact.id === record.id)
+  const index = store.artifacts.findIndex(
+    (artifact) => artifact.id === record.id,
+  )
   if (index >= 0) {
     store.artifacts[index] = record
   } else {
@@ -1609,43 +1834,66 @@ function processCommandExecutionJsonEvent(
   return null
 }
 
-export function processCodexJsonLine(
-  line: string,
-): ProcessedCodexJsonLine | null {
+function parseCodexJsonEventLine(line: string): CodexExecJsonEvent | null {
   if (!line.startsWith('{')) return null
   try {
-    const event = JSON.parse(line) as CodexExecJsonEvent
-    const commandEvent = processCommandExecutionJsonEvent(event)
-    if (commandEvent) return commandEvent
-    if (!isAssistantJsonEvent(event)) return null
-
-    const text =
-      extractTextCandidate(event.item) ||
-      extractTextCandidate(event) ||
-      extractTextFromContent(event.content)
-
-    if (!text) return null
-
-    if (
-      event.type === 'item.completed' ||
-      event.type === 'response.output_text.done' ||
-      event.type === 'assistant.completed'
-    ) {
-      return { kind: 'assistant-final', text }
-    }
-
-    if (
-      event.type?.includes('delta') ||
-      event.type?.includes('updated') ||
-      event.type?.includes('stream')
-    ) {
-      return { kind: 'assistant-delta', text }
-    }
-
-    return null
+    return JSON.parse(line) as CodexExecJsonEvent
   } catch {
     return null
   }
+}
+
+function usageFromCodexEvent(
+  event: CodexExecJsonEvent,
+): CodexRunTokenMetrics | undefined {
+  return (
+    normalizeTokenMetrics(event.usage) ??
+    normalizeTokenMetrics(
+      event.item && typeof event.item === 'object'
+        ? (event.item as Record<string, unknown>).usage
+        : undefined,
+    )
+  )
+}
+
+function processCodexJsonEvent(
+  event: CodexExecJsonEvent,
+): ProcessedCodexJsonLine | null {
+  const commandEvent = processCommandExecutionJsonEvent(event)
+  if (commandEvent) return commandEvent
+  if (!isAssistantJsonEvent(event)) return null
+
+  const text =
+    extractTextCandidate(event.item) ||
+    extractTextCandidate(event) ||
+    extractTextFromContent(event.content)
+
+  if (!text) return null
+
+  if (
+    event.type === 'item.completed' ||
+    event.type === 'response.output_text.done' ||
+    event.type === 'assistant.completed'
+  ) {
+    return { kind: 'assistant-final', text }
+  }
+
+  if (
+    event.type?.includes('delta') ||
+    event.type?.includes('updated') ||
+    event.type?.includes('stream')
+  ) {
+    return { kind: 'assistant-delta', text }
+  }
+
+  return null
+}
+
+export function processCodexJsonLine(
+  line: string,
+): ProcessedCodexJsonLine | null {
+  const event = parseCodexJsonEventLine(line)
+  return event ? processCodexJsonEvent(event) : null
 }
 
 export function mergeAssistantText(
@@ -1686,6 +1934,9 @@ function runCodexExec(
   })
   runningTasks.set(runId, child)
   updateTask(runId, 'running')
+  appendStatusRunEvent(runId, 'running', 'Codex CLI started', {
+    command: path.basename(command),
+  })
 
   let stdoutBuffer = ''
   let stderrBuffer = ''
@@ -1721,6 +1972,12 @@ function runCodexExec(
     const message = messageFromAssistantText(text, runId)
     appendMessage(session, message)
     writeStore(store)
+    appendRunEvent(runId, {
+      kind: 'final-message',
+      label: 'Final assistant message',
+      message: text,
+      status: 'final',
+    })
     emittedFinal = true
     emitFinalMessage(message)
   }
@@ -1731,11 +1988,44 @@ function runCodexExec(
     const lines = stdoutBuffer.split(/\r?\n/)
     stdoutBuffer = lines.pop() ?? ''
     for (const line of lines) {
-      const processed = processCodexJsonLine(line.trim())
+      const event = parseCodexJsonEventLine(line.trim())
+      if (!event) continue
+      appendTokenMetrics(runId, usageFromCodexEvent(event))
+      const processed = processCodexJsonEvent(event)
       if (!processed) continue
       if (processed.kind === 'message-delta') {
         appendMessage(session, processed.message)
         writeStore(store)
+        const toolCall = processed.message.content?.find(
+          (part) => part.type === 'toolCall',
+        )
+        const details = processed.message.details ?? {}
+        const commandName =
+          typeof details.command === 'string'
+            ? details.command
+            : typeof toolCall?.name === 'string'
+              ? toolCall.name
+              : processed.message.toolName
+        appendRunEvent(runId, {
+          kind:
+            processed.message.role === 'toolResult'
+              ? 'tool-result'
+              : 'tool-call',
+          label:
+            processed.message.role === 'toolResult'
+              ? 'Tool result'
+              : 'Tool call',
+          commandName,
+          toolCallId: processed.message.toolCallId ?? toolCall?.id,
+          exitCode:
+            typeof details.exitCode === 'number' ? details.exitCode : undefined,
+          status:
+            typeof details.status === 'string' ? details.status : undefined,
+          message:
+            processed.message.role === 'toolResult'
+              ? extractTextFromContent(processed.message.content)
+              : undefined,
+        })
         emitStreamMessage(processed.message, 'delta')
         continue
       }
@@ -1745,6 +2035,12 @@ function runCodexExec(
         processed.kind,
       )
       if (processed.kind === 'assistant-delta') {
+        appendRunEvent(runId, {
+          kind: 'assistant-delta',
+          label: 'Assistant delta',
+          message: assistantText,
+          status: 'streaming',
+        })
         emitAssistantDelta(assistantText)
         continue
       }
@@ -1766,6 +2062,12 @@ function runCodexExec(
   child.on('error', (error) => {
     preparedAttachments.cleanup()
     runningTasks.delete(runId)
+    appendRunEvent(runId, {
+      kind: 'error',
+      label: 'Process error',
+      message: error.message,
+      status: 'failed',
+    })
     updateTask(runId, 'failed', {
       note: error.message,
       exitCode: null,
@@ -1790,6 +2092,12 @@ function runCodexExec(
     runningTasks.delete(runId)
     if (currentTaskStatus() === 'canceled') {
       updateTask(runId, 'canceled', { exitCode: code })
+      appendRunEvent(runId, {
+        kind: 'exit',
+        label: 'Run canceled',
+        exitCode: code,
+        status: 'canceled',
+      })
       emit(session.key, {
         event: 'chat',
         stateVersion,
@@ -1801,7 +2109,10 @@ function runCodexExec(
       })
       return
     }
-    const trailing = processCodexJsonLine(stdoutBuffer.trim())
+    const trailingEvent = parseCodexJsonEventLine(stdoutBuffer.trim())
+    if (trailingEvent)
+      appendTokenMetrics(runId, usageFromCodexEvent(trailingEvent))
+    const trailing = trailingEvent ? processCodexJsonEvent(trailingEvent) : null
     if (trailing) {
       if (trailing.kind === 'message-delta') {
         appendMessage(session, trailing.message)
@@ -1819,10 +2130,22 @@ function runCodexExec(
         ) {
           appendFinalText(assistantText)
           updateTask(runId, 'completed', { exitCode: code })
+          appendRunEvent(runId, {
+            kind: 'exit',
+            label: 'Codex CLI exited',
+            exitCode: code,
+            status: 'completed',
+          })
           return
         }
         if (emittedFinal && code === 0) {
           updateTask(runId, 'completed', { exitCode: code })
+          appendRunEvent(runId, {
+            kind: 'exit',
+            label: 'Codex CLI exited',
+            exitCode: code,
+            status: 'completed',
+          })
           return
         }
       }
@@ -1830,11 +2153,23 @@ function runCodexExec(
 
     if (emittedFinal && code === 0) {
       updateTask(runId, 'completed', { exitCode: code })
+      appendRunEvent(runId, {
+        kind: 'exit',
+        label: 'Codex CLI exited',
+        exitCode: code,
+        status: 'completed',
+      })
       return
     }
     if (code === 0 && assistantText) {
       appendFinalText(assistantText)
       updateTask(runId, 'completed', { exitCode: code })
+      appendRunEvent(runId, {
+        kind: 'exit',
+        label: 'Codex CLI exited',
+        exitCode: code,
+        status: 'completed',
+      })
       return
     }
 
@@ -1847,6 +2182,19 @@ function runCodexExec(
     updateTask(runId, 'failed', {
       note: taskErrorDetail,
       exitCode: code,
+    })
+    appendRunEvent(runId, {
+      kind: 'error',
+      label: 'Run failed',
+      message: taskErrorDetail,
+      exitCode: code,
+      status: 'failed',
+    })
+    appendRunEvent(runId, {
+      kind: 'exit',
+      label: 'Codex CLI exited',
+      exitCode: code,
+      status: 'failed',
     })
     const fallback =
       code === 0
@@ -2425,6 +2773,87 @@ function publicTaskRecord(task: CodexTaskRecord) {
     error: task.error,
     retryOf: task.retryOf,
     events: task.events,
+    timeline: task.timeline,
+    tokenMetrics: task.tokenMetrics,
+  }
+}
+
+function redactEventString(value: string) {
+  const replacements = [
+    [path.resolve(getStateDir()), '$CODEX_CLAW_STATE'],
+    [path.resolve(getCodexWorkdir()), '$WORKSPACE'],
+    [os.homedir(), '~'],
+  ] as const
+  let next = value
+  for (const [from, to] of replacements) {
+    if (!from) continue
+    next = next.split(from).join(to)
+  }
+  return next
+}
+
+function redactEventValue(value: unknown): unknown {
+  if (typeof value === 'string') return redactEventString(value)
+  if (
+    typeof value === 'number' ||
+    typeof value === 'boolean' ||
+    value === null
+  ) {
+    return value
+  }
+  if (Array.isArray(value)) return value.map(redactEventValue)
+  if (!value || typeof value !== 'object') return undefined
+  const redacted: Record<string, unknown> = {}
+  for (const [key, entry] of Object.entries(value)) {
+    const nextValue = redactEventValue(entry)
+    if (typeof nextValue !== 'undefined') redacted[key] = nextValue
+  }
+  return redacted
+}
+
+function redactRunEvent(event: CodexRunTimelineEvent) {
+  return {
+    ...event,
+    message:
+      typeof event.message === 'string'
+        ? redactEventString(event.message)
+        : undefined,
+    commandName:
+      typeof event.commandName === 'string'
+        ? redactEventString(event.commandName)
+        : undefined,
+    details: redactEventValue(event.details) as
+      | Record<string, unknown>
+      | undefined,
+    tokenMetrics: event.tokenMetrics
+      ? {
+          ...event.tokenMetrics,
+          raw: redactEventValue(event.tokenMetrics.raw) as
+            | Record<string, unknown>
+            | undefined,
+        }
+      : undefined,
+  }
+}
+
+export function getCodexRunEventLog(input: { id: string }) {
+  const id = input.id.trim()
+  const task = readTaskStore().tasks.find((item) => item.id === id)
+  if (!task) throw new Error('Run not found.')
+  return {
+    exportedAt: new Date().toISOString(),
+    runId: task.id,
+    sessionKey: task.sessionKey,
+    messageId: task.messageId,
+    status: task.status,
+    createdAt: task.createdAt,
+    startedAt: task.startedAt,
+    finishedAt: task.finishedAt,
+    durationMs: task.durationMs,
+    exitCode: task.exitCode,
+    tokenMetrics: task.tokenMetrics ?? null,
+    tokenMetricsAvailable: Boolean(task.tokenMetrics),
+    events: task.timeline.map(redactRunEvent),
   }
 }
 
@@ -2466,8 +2895,8 @@ export function listCodexArtifacts(input: {
     sessionKeys.add(key)
     sessionKeys.add(deriveFriendlyIdFromKey(key))
   }
-  const artifacts = readArtifactStore().artifacts
-    .filter((artifact) => {
+  const artifacts = readArtifactStore()
+    .artifacts.filter((artifact) => {
       if (sessionKeys.size === 0) return true
       return sessionKeys.has(artifact.sessionKey)
     })

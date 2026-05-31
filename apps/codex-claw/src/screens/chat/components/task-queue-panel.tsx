@@ -3,14 +3,21 @@ import { HugeiconsIcon } from '@hugeicons/react'
 import {
   Cancel01Icon,
   CheckmarkCircle01Icon,
+  Download01Icon,
   RefreshIcon,
+  TimelineIcon,
 } from '@hugeicons/core-free-icons'
 import {
   cancelCodexTask,
   fetchCodexTasks,
   retryCodexTask,
 } from '../chat-queries'
-import type { CodexTaskRecord, CodexTaskStatus } from '../types'
+import type {
+  CodexRunTimelineEvent,
+  CodexRunTokenMetrics,
+  CodexTaskRecord,
+  CodexTaskStatus,
+} from '../types'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
@@ -47,6 +54,65 @@ function formatDuration(task: CodexTaskRecord) {
   const minutes = Math.floor(seconds / 60)
   const remainder = seconds % 60
   return String(minutes) + 'm ' + String(remainder) + 's'
+}
+
+function formatMs(duration: number) {
+  if (duration < 1000) return String(Math.max(0, Math.round(duration))) + 'ms'
+  const seconds = duration / 1000
+  if (seconds < 60) return seconds.toFixed(seconds < 10 ? 1 : 0) + 's'
+  const minutes = Math.floor(seconds / 60)
+  const remainder = Math.round(seconds % 60)
+  return String(minutes) + 'm ' + String(remainder) + 's'
+}
+
+function tokenMetricLabel(metrics?: CodexRunTokenMetrics) {
+  if (!metrics) return 'Token/context metrics unavailable'
+  const parts: Array<string> = []
+  if (typeof metrics.totalTokens === 'number') {
+    parts.push(metrics.totalTokens.toLocaleString() + ' total')
+  }
+  if (typeof metrics.inputTokens === 'number') {
+    parts.push(metrics.inputTokens.toLocaleString() + ' in')
+  }
+  if (typeof metrics.outputTokens === 'number') {
+    parts.push(metrics.outputTokens.toLocaleString() + ' out')
+  }
+  if (typeof metrics.contextTokens === 'number') {
+    parts.push(metrics.contextTokens.toLocaleString() + ' context')
+  }
+  return parts.length > 0
+    ? parts.join(' · ')
+    : 'Token/context metrics unavailable'
+}
+
+function eventClass(kind: CodexRunTimelineEvent['kind']) {
+  if (kind === 'error') return 'bg-red-100 text-red-700'
+  if (kind === 'exit' || kind === 'final-message') {
+    return 'bg-emerald-100 text-emerald-700'
+  }
+  if (kind === 'tool-call' || kind === 'tool-result') {
+    return 'bg-blue-100 text-blue-700'
+  }
+  return 'bg-primary-100 text-primary-700'
+}
+
+function eventMeta(event: CodexRunTimelineEvent) {
+  const parts: Array<string> = []
+  if (event.commandName) parts.push(event.commandName)
+  if (typeof event.exitCode === 'number') {
+    parts.push('exit ' + String(event.exitCode))
+  } else if (event.exitCode === null) {
+    parts.push('exit unavailable')
+  }
+  if (event.status) parts.push(event.status)
+  return parts.join(' · ')
+}
+
+function exportRunEvents(task: CodexTaskRecord) {
+  if (typeof window === 'undefined') return
+  const url =
+    '/api/run-events?id=' + encodeURIComponent(task.id) + '&download=1'
+  window.location.assign(url)
 }
 
 function canCancel(task: CodexTaskRecord) {
@@ -184,6 +250,14 @@ export function TaskQueuePanel({ open, onClose }: TaskQueuePanelProps) {
                     {typeof task.exitCode === 'number' ? task.exitCode : 'open'}
                   </span>
                 </div>
+                <div className="mt-1 grid gap-1 text-xs text-primary-500 sm:grid-cols-2">
+                  <span className="tabular-nums">
+                    {task.timeline.length.toLocaleString()} timeline events
+                  </span>
+                  <span className="truncate tabular-nums">
+                    {tokenMetricLabel(task.tokenMetrics)}
+                  </span>
+                </div>
                 {task.error ? (
                   <div className="mt-1 line-clamp-2 text-xs text-red-600">
                     {task.error}
@@ -206,6 +280,74 @@ export function TaskQueuePanel({ open, onClose }: TaskQueuePanelProps) {
                 >
                   Retry
                 </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => exportRunEvents(task)}
+                >
+                  <HugeiconsIcon
+                    icon={Download01Icon}
+                    size={20}
+                    strokeWidth={1.5}
+                  />
+                  JSON
+                </Button>
+              </div>
+            </div>
+            <div className="mt-3 rounded-lg border border-primary-200 bg-surface">
+              <div className="flex items-center gap-2 border-b border-primary-200 px-3 py-2 text-xs text-primary-600">
+                <HugeiconsIcon
+                  icon={TimelineIcon}
+                  size={20}
+                  strokeWidth={1.5}
+                />
+                <span className="font-medium text-primary-900">
+                  Run timeline
+                </span>
+                <span className="tabular-nums">
+                  final status: {statusLabel(task.status)}
+                </span>
+              </div>
+              <div className="max-h-44 overflow-auto">
+                {task.timeline.length === 0 ? (
+                  <div className="px-3 py-3 text-xs text-primary-500">
+                    No normalized run events recorded for this run.
+                  </div>
+                ) : null}
+                {task.timeline.map((event) => (
+                  <div
+                    key={event.id}
+                    className="border-t border-primary-100 px-3 py-2 first:border-t-0"
+                  >
+                    <div className="flex min-w-0 items-start gap-2">
+                      <span className="w-16 shrink-0 text-xs tabular-nums text-primary-500">
+                        +{formatMs(event.relativeMs)}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex min-w-0 flex-wrap items-center gap-2">
+                          <span
+                            className={cn(
+                              'rounded-full px-2 py-0.5 text-[11px]',
+                              eventClass(event.kind),
+                            )}
+                          >
+                            {event.label}
+                          </span>
+                          {eventMeta(event) ? (
+                            <span className="min-w-0 truncate text-xs text-primary-500">
+                              {eventMeta(event)}
+                            </span>
+                          ) : null}
+                        </div>
+                        {event.message ? (
+                          <div className="mt-1 line-clamp-2 whitespace-pre-wrap text-xs text-primary-600">
+                            {event.message}
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
