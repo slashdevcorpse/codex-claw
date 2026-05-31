@@ -94,6 +94,11 @@ export function normalizeSessions(
           ? session.derivedTitle
           : undefined,
       label: typeof session.label === 'string' ? session.label : undefined,
+      tags: Array.isArray(session.tags)
+        ? session.tags.filter((tag): tag is string => typeof tag === 'string')
+        : [],
+      archived: session.archived === true,
+      hasFailedRun: session.hasFailedRun === true,
       updatedAt:
         typeof session.updatedAt === 'number' ? session.updatedAt : undefined,
       lastMessage: session.lastMessage ?? null,

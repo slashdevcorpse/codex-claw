@@ -59,6 +59,9 @@ export type SessionSummary = {
   label?: string
   title?: string
   derivedTitle?: string
+  tags?: Array<string>
+  archived?: boolean
+  hasFailedRun?: boolean
   updatedAt?: number
   lastMessage?: GatewayMessage | null
   friendlyId?: string
@@ -82,6 +85,9 @@ export type SessionMeta = {
   title?: string
   derivedTitle?: string
   label?: string
+  tags: Array<string>
+  archived: boolean
+  hasFailedRun: boolean
   updatedAt?: number
   lastMessage?: GatewayMessage | null
   totalTokens?: number
