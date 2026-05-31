@@ -24,6 +24,7 @@ import { Route as ApiPathsRouteImport } from './routes/api/paths'
 import { Route as ApiMcpHealthRouteImport } from './routes/api/mcp-health'
 import { Route as ApiHistoryRouteImport } from './routes/api/history'
 import { Route as ApiGitReviewRouteImport } from './routes/api/git-review'
+import { Route as ApiContextPreviewRouteImport } from './routes/api/context-preview'
 import { Route as ApiArtifactsRouteImport } from './routes/api/artifacts'
 
 const NewRoute = NewRouteImport.update({
@@ -101,6 +102,11 @@ const ApiGitReviewRoute = ApiGitReviewRouteImport.update({
   path: '/api/git-review',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiContextPreviewRoute = ApiContextPreviewRouteImport.update({
+  id: '/api/context-preview',
+  path: '/api/context-preview',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiArtifactsRoute = ApiArtifactsRouteImport.update({
   id: '/api/artifacts',
   path: '/api/artifacts',
@@ -112,6 +118,7 @@ export interface FileRoutesByFullPath {
   '/connect': typeof ConnectRoute
   '/new': typeof NewRoute
   '/api/artifacts': typeof ApiArtifactsRoute
+  '/api/context-preview': typeof ApiContextPreviewRoute
   '/api/git-review': typeof ApiGitReviewRoute
   '/api/history': typeof ApiHistoryRoute
   '/api/mcp-health': typeof ApiMcpHealthRoute
@@ -130,6 +137,7 @@ export interface FileRoutesByTo {
   '/connect': typeof ConnectRoute
   '/new': typeof NewRoute
   '/api/artifacts': typeof ApiArtifactsRoute
+  '/api/context-preview': typeof ApiContextPreviewRoute
   '/api/git-review': typeof ApiGitReviewRoute
   '/api/history': typeof ApiHistoryRoute
   '/api/mcp-health': typeof ApiMcpHealthRoute
@@ -149,6 +157,7 @@ export interface FileRoutesById {
   '/connect': typeof ConnectRoute
   '/new': typeof NewRoute
   '/api/artifacts': typeof ApiArtifactsRoute
+  '/api/context-preview': typeof ApiContextPreviewRoute
   '/api/git-review': typeof ApiGitReviewRoute
   '/api/history': typeof ApiHistoryRoute
   '/api/mcp-health': typeof ApiMcpHealthRoute
@@ -169,6 +178,7 @@ export interface FileRouteTypes {
     | '/connect'
     | '/new'
     | '/api/artifacts'
+    | '/api/context-preview'
     | '/api/git-review'
     | '/api/history'
     | '/api/mcp-health'
@@ -187,6 +197,7 @@ export interface FileRouteTypes {
     | '/connect'
     | '/new'
     | '/api/artifacts'
+    | '/api/context-preview'
     | '/api/git-review'
     | '/api/history'
     | '/api/mcp-health'
@@ -205,6 +216,7 @@ export interface FileRouteTypes {
     | '/connect'
     | '/new'
     | '/api/artifacts'
+    | '/api/context-preview'
     | '/api/git-review'
     | '/api/history'
     | '/api/mcp-health'
@@ -224,6 +236,7 @@ export interface RootRouteChildren {
   ConnectRoute: typeof ConnectRoute
   NewRoute: typeof NewRoute
   ApiArtifactsRoute: typeof ApiArtifactsRoute
+  ApiContextPreviewRoute: typeof ApiContextPreviewRoute
   ApiGitReviewRoute: typeof ApiGitReviewRoute
   ApiHistoryRoute: typeof ApiHistoryRoute
   ApiMcpHealthRoute: typeof ApiMcpHealthRoute
@@ -345,6 +358,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiGitReviewRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/context-preview': {
+      id: '/api/context-preview'
+      path: '/api/context-preview'
+      fullPath: '/api/context-preview'
+      preLoaderRoute: typeof ApiContextPreviewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/artifacts': {
       id: '/api/artifacts'
       path: '/api/artifacts'
@@ -360,6 +380,7 @@ const rootRouteChildren: RootRouteChildren = {
   ConnectRoute: ConnectRoute,
   NewRoute: NewRoute,
   ApiArtifactsRoute: ApiArtifactsRoute,
+  ApiContextPreviewRoute: ApiContextPreviewRoute,
   ApiGitReviewRoute: ApiGitReviewRoute,
   ApiHistoryRoute: ApiHistoryRoute,
   ApiMcpHealthRoute: ApiMcpHealthRoute,
