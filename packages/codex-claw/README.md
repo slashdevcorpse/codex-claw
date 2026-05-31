@@ -20,10 +20,25 @@ The package is designed for an <code>npx codex-claw@alpha</code> first-run workf
 
 ## Alpha Install
 
-After the first public npm publish:
+After the first public npm publish, use <code>npx</code> for the cleanest alpha path:
+
+~~~powershell
+# Windows PowerShell
+npx codex-claw@alpha
+npm exec codex-claw@alpha -- doctor
+~~~
 
 ~~~bash
+# macOS and Linux
 npx codex-claw@alpha
+npm exec codex-claw@alpha -- doctor
+~~~
+
+Global alpha install:
+
+~~~bash
+npm install -g codex-claw@alpha
+codex-claw doctor
 ~~~
 
 Useful non-interactive bootstrap:
@@ -33,6 +48,12 @@ npx codex-claw@alpha --yes --no-start --project-name codex-claw-demo
 cd codex-claw-demo
 pnpm install
 pnpm dev
+~~~
+
+Update by re-running <code>npx codex-claw@alpha</code> or reinstalling the alpha tag:
+
+~~~bash
+npm install -g codex-claw@alpha
 ~~~
 
 ## Local Development Usage
@@ -55,7 +76,7 @@ node packages/codex-claw/bin/codex-claw.js doctor
 | <code>codex-claw preview</code> | Preview the production build |
 | <code>codex-claw test</code> | Run tests |
 | <code>codex-claw lint</code> | Run lint |
-| <code>codex-claw doctor</code> | Validate Node.js, pnpm, and Codex CLI |
+| <code>codex-claw doctor</code> | Validate Node.js, npm auth, pnpm, Git, Codex CLI, state directory, and dev port availability |
 
 ## Prompts
 
@@ -84,7 +105,20 @@ Then it creates the project folder, installs dependencies, and starts CodexClaw 
 npm whoami
 npm view codex-claw version dist-tags --json
 pnpm pack:codex-claw
+pnpm smoke:codex-claw:pack
+pnpm smoke:codex-claw:npm
 pnpm release:codex-claw
 ~~~
 
 The release script publishes with the <code>alpha</code> dist-tag so early builds stay clearly separated from a future stable channel.
+
+## Troubleshooting
+
+| Symptom | Action |
+| --- | --- |
+| <code>npm auth unavailable</code> | Run <code>npm login</code>, then <code>npm whoami</code> before publishing |
+| <code>codex-claw@alpha was not found on npm</code> | The alpha package is not published yet; use the source checkout or publish with <code>pnpm release:codex-claw</code> |
+| <code>Port 3000 is already in use</code> | Stop the existing process or run <code>codex-claw doctor --port 3001</code> |
+| <code>Codex CLI was not found</code> | Install Codex CLI, run <code>codex login</code>, or pass <code>--codex-command &lt;cmd&gt;</code> |
+
+The npm smoke test intentionally fails with a package-not-found message until the alpha package is available on npm.
