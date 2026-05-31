@@ -46,5 +46,8 @@ jobs:
       - name: Check package contents
         run: pnpm pack:codex-claw
 
+      - name: Smoke packed CLI
+        run: pnpm smoke:codex-claw:pack
+
       - name: Audit dependencies
         run: pnpm audit --audit-level low
