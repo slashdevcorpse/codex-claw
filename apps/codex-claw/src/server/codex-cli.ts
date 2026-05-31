@@ -5,6 +5,7 @@ import {
   mkdirSync,
   readFileSync,
   renameSync,
+  rmSync,
   writeFileSync,
 } from 'node:fs'
 import os from 'node:os'
@@ -25,6 +26,14 @@ type MessageContent =
       name?: string
       arguments?: Record<string, unknown>
       partialJson?: string
+    }
+  | {
+      type: 'image'
+      source: {
+        type: 'base64'
+        media_type: string
+        data: string
+      }
     }
 
 type CodexMessage = {
@@ -58,6 +67,7 @@ type SessionStore = {
 type AttachmentInput = {
   mimeType: string
   content: string
+  name?: string
 }
 
 type SendCodexPromptInput = {
@@ -77,9 +87,17 @@ type CodexStreamEvent = {
 
 type CodexExecJsonEvent = {
   type?: string
+  role?: string
+  text?: string
+  delta?: string
+  message?: unknown
+  content?: unknown
   item?: {
     type?: string
+    role?: string
     text?: string
+    delta?: string
+    content?: unknown
     name?: string
     arguments?: Record<string, unknown>
     [key: string]: unknown
@@ -94,6 +112,21 @@ type CodexPathsPayload = {
   sessionsDir: string
   storePath: string
 }
+
+type PreparedAttachmentFiles = {
+  imagePaths: Array<string>
+  cleanup: () => void
+}
+
+type ProcessedCodexJsonLine =
+  | {
+      kind: 'assistant-delta'
+      text: string
+    }
+  | {
+      kind: 'assistant-final'
+      text: string
+    }
 
 const listeners = new Map<string, Set<(event: CodexStreamEvent) => void>>()
 let storeCache: SessionStore | null = null
@@ -305,25 +338,29 @@ function buildUserPrompt(input: SendCodexPromptInput) {
   }
   if (input.attachments && input.attachments.length > 0) {
     parts.push(
-      `Attachments were provided, but CodexClaw alpha currently sends text prompts only. Attachment count: ${input.attachments.length}.`,
+      `Attached image count: ${input.attachments.length}. Review the attached image files when they are relevant to the request.`,
     )
   }
   return parts.join('\n\n')
 }
 
-function buildCodexArgs() {
+function buildCodexArgs(imagePaths: Array<string>) {
   const args = ['-s', getCodexSandbox(), '-C', getCodexWorkdir()]
   args.push('exec')
   args.push('--ignore-user-config')
   args.push('--json')
   args.push('--skip-git-repo-check')
+  for (const imagePath of imagePaths) {
+    args.push('--image')
+    args.push(imagePath)
+  }
   args.push('-')
   return args
 }
 
-function messageFromAssistantText(text: string): CodexMessage {
+function messageFromAssistantText(text: string, id = randomUUID()): CodexMessage {
   return {
-    id: randomUUID(),
+    id,
     role: 'assistant',
     timestamp: Date.now(),
     content: [{ type: 'text', text }],
@@ -340,28 +377,209 @@ function errorMessage(text: string): CodexMessage {
   }
 }
 
-function processCodexJsonLine(line: string) {
+function imageContentFromAttachment(attachment: AttachmentInput): MessageContent {
+  return {
+    type: 'image',
+    source: {
+      type: 'base64',
+      media_type: attachment.mimeType,
+      data: attachment.content,
+    },
+  }
+}
+
+function contentFromUserInput(input: SendCodexPromptInput): Array<MessageContent> {
+  const content: Array<MessageContent> = []
+
+  for (const attachment of input.attachments ?? []) {
+    if (!isSupportedImageAttachment(attachment)) continue
+    content.push(imageContentFromAttachment(attachment))
+  }
+
+  if (input.message.trim()) {
+    content.push({ type: 'text', text: input.message })
+  } else if (content.length === 0) {
+    content.push({ type: 'text', text: '' })
+  }
+
+  return content
+}
+
+function isSupportedImageAttachment(attachment: AttachmentInput) {
+  return (
+    attachment.mimeType.startsWith('image/') &&
+    attachment.content.trim().length > 0
+  )
+}
+
+function attachmentExtension(mimeType: string) {
+  switch (mimeType.toLowerCase()) {
+    case 'image/jpeg':
+    case 'image/jpg':
+      return '.jpg'
+    case 'image/png':
+      return '.png'
+    case 'image/gif':
+      return '.gif'
+    case 'image/webp':
+      return '.webp'
+    default:
+      return '.img'
+  }
+}
+
+function prepareAttachmentFiles(
+  runId: string,
+  attachments: Array<AttachmentInput> | undefined,
+): PreparedAttachmentFiles {
+  const supported = (attachments ?? []).filter(isSupportedImageAttachment)
+  if (supported.length === 0) {
+    return {
+      imagePaths: [],
+      cleanup() {},
+    }
+  }
+
+  const attachmentsDir = path.join(getStateDir(), 'runs', runId, 'attachments')
+  mkdirSync(attachmentsDir, { recursive: true })
+  const imagePaths: Array<string> = []
+
+  supported.forEach((attachment, index) => {
+    const imagePath = path.join(
+      attachmentsDir,
+      `image-${index + 1}${attachmentExtension(attachment.mimeType)}`,
+    )
+    writeFileSync(imagePath, Buffer.from(attachment.content, 'base64'))
+    imagePaths.push(imagePath)
+  })
+
+  return {
+    imagePaths,
+    cleanup() {
+      rmSync(path.dirname(attachmentsDir), { recursive: true, force: true })
+    },
+  }
+}
+
+function extractTextFromContent(value: unknown): string {
+  if (typeof value === 'string') return value
+  if (!Array.isArray(value)) return ''
+  return value
+    .map((part) => {
+      if (!part || typeof part !== 'object') return ''
+      const item = part as Record<string, unknown>
+      if (typeof item.text === 'string') return item.text
+      if (typeof item.delta === 'string') return item.delta
+      if (typeof item.content === 'string') return item.content
+      return ''
+    })
+    .join('')
+}
+
+function extractTextCandidate(value: unknown): string {
+  if (!value || typeof value !== 'object') return ''
+  const item = value as Record<string, unknown>
+  const candidates = [
+    item.text,
+    item.delta,
+    item.output_text,
+    item.outputText,
+    item.content,
+  ]
+
+  for (const candidate of candidates) {
+    const text =
+      typeof candidate === 'string'
+        ? candidate
+        : extractTextFromContent(candidate)
+    if (text) return text
+  }
+
+  const message = item.message
+  if (message && typeof message === 'object') {
+    const text = extractTextCandidate(message)
+    if (text) return text
+  }
+
+  return ''
+}
+
+function isAssistantJsonEvent(event: CodexExecJsonEvent) {
+  const type = event.type ?? ''
+  const itemType = event.item?.type ?? ''
+  const role = event.item?.role ?? event.role ?? ''
+  return (
+    role === 'assistant' ||
+    itemType === 'agent_message' ||
+    itemType === 'assistant_message' ||
+    type.includes('agent_message') ||
+    type.includes('assistant') ||
+    type.includes('output_text')
+  )
+}
+
+function processCodexJsonLine(line: string): ProcessedCodexJsonLine | null {
   if (!line.startsWith('{')) return null
   try {
     const event = JSON.parse(line) as CodexExecJsonEvent
-    if (event.type === 'item.completed' && event.item?.type === 'agent_message') {
-      const text = typeof event.item.text === 'string' ? event.item.text : ''
-      return text ? messageFromAssistantText(text) : null
+    if (!isAssistantJsonEvent(event)) return null
+
+    const text =
+      extractTextCandidate(event.item) ||
+      extractTextCandidate(event) ||
+      extractTextFromContent(event.content)
+
+    if (!text) return null
+
+    if (
+      event.type === 'item.completed' ||
+      event.type === 'response.output_text.done' ||
+      event.type === 'assistant.completed'
+    ) {
+      return { kind: 'assistant-final', text }
     }
+
+    if (
+      event.type?.includes('delta') ||
+      event.type?.includes('updated') ||
+      event.type?.includes('stream')
+    ) {
+      return { kind: 'assistant-delta', text }
+    }
+
+    return null
   } catch {
     return null
   }
-  return null
 }
 
-function runCodexExec(sessionKey: string, prompt: string, runId: string) {
+function mergeAssistantText(
+  currentText: string,
+  incomingText: string,
+  kind: ProcessedCodexJsonLine['kind'],
+) {
+  if (!incomingText) return currentText
+  if (kind === 'assistant-final') return incomingText
+  if (!currentText) return incomingText
+  if (incomingText.startsWith(currentText)) return incomingText
+  if (currentText.endsWith(incomingText)) return currentText
+  return `${currentText}${incomingText}`
+}
+
+function runCodexExec(
+  sessionKey: string,
+  prompt: string,
+  runId: string,
+  attachments?: Array<AttachmentInput>,
+) {
   const store = readStore()
   const session = ensureSession(sessionKey)
   const command =
     process.platform === 'win32'
       ? getCodexCommand()
       : resolveCodexCommand(getCodexCommand())
-  const args = buildCodexArgs()
+  const preparedAttachments = prepareAttachmentFiles(runId, attachments)
+  const args = buildCodexArgs(preparedAttachments.imagePaths)
   const child = spawn(command, args, {
     cwd: getCodexWorkdir(),
     env: process.env,
@@ -371,6 +589,48 @@ function runCodexExec(sessionKey: string, prompt: string, runId: string) {
   let stdoutBuffer = ''
   let stderrBuffer = ''
   let emittedFinal = false
+  let assistantText = ''
+  let streamSeq = 0
+
+  function emitAssistantDelta(text: string) {
+    streamSeq += 1
+    emit(session.key, {
+      event: 'chat',
+      seq: streamSeq,
+      stateVersion,
+      payload: {
+        runId,
+        sessionKey: session.key,
+        state: 'delta',
+        seq: streamSeq,
+        message: messageFromAssistantText(text, runId),
+      },
+    })
+  }
+
+  function emitFinalMessage(message: CodexMessage) {
+    streamSeq += 1
+    emit(session.key, {
+      event: 'chat',
+      seq: streamSeq,
+      stateVersion,
+      payload: {
+        runId,
+        sessionKey: session.key,
+        state: 'final',
+        seq: streamSeq,
+        message,
+      },
+    })
+  }
+
+  function appendFinalText(text: string) {
+    const message = messageFromAssistantText(text, runId)
+    appendMessage(session, message)
+    writeStore(store)
+    emittedFinal = true
+    emitFinalMessage(message)
+  }
 
   child.stdout.setEncoding('utf8')
   child.stdout.on('data', (chunk: string) => {
@@ -378,21 +638,18 @@ function runCodexExec(sessionKey: string, prompt: string, runId: string) {
     const lines = stdoutBuffer.split(/\r?\n/)
     stdoutBuffer = lines.pop() ?? ''
     for (const line of lines) {
-      const message = processCodexJsonLine(line.trim())
-      if (!message) continue
-      appendMessage(session, message)
-      writeStore(store)
-      emittedFinal = true
-      emit(session.key, {
-        event: 'chat',
-        stateVersion,
-        payload: {
-          runId,
-          sessionKey: session.key,
-          state: 'final',
-          message,
-        },
-      })
+      const processed = processCodexJsonLine(line.trim())
+      if (!processed) continue
+      assistantText = mergeAssistantText(
+        assistantText,
+        processed.text,
+        processed.kind,
+      )
+      if (processed.kind === 'assistant-delta') {
+        emitAssistantDelta(assistantText)
+        continue
+      }
+      appendFinalText(assistantText)
     }
   })
 
@@ -404,6 +661,7 @@ function runCodexExec(sessionKey: string, prompt: string, runId: string) {
   child.stdin.end(prompt)
 
   child.on('error', (error) => {
+    preparedAttachments.cleanup()
     const message = errorMessage(error.message)
     appendMessage(session, message)
     writeStore(store)
@@ -420,21 +678,15 @@ function runCodexExec(sessionKey: string, prompt: string, runId: string) {
   })
 
   child.on('close', (code) => {
+    preparedAttachments.cleanup()
     const trailing = processCodexJsonLine(stdoutBuffer.trim())
     if (trailing) {
-      appendMessage(session, trailing)
-      writeStore(store)
-      emittedFinal = true
-      emit(session.key, {
-        event: 'chat',
-        stateVersion,
-        payload: {
-          runId,
-          sessionKey: session.key,
-          state: 'final',
-          message: trailing,
-        },
-      })
+      assistantText = mergeAssistantText(
+        assistantText,
+        trailing.text,
+        trailing.kind,
+      )
+      appendFinalText(assistantText)
       return
     }
 
@@ -498,7 +750,7 @@ export function sendCodexPrompt(input: SendCodexPromptInput) {
     clientId: input.idempotencyKey,
     role: 'user',
     timestamp: Date.now(),
-    content: [{ type: 'text', text: input.message }],
+    content: contentFromUserInput(input),
   }
   appendMessage(session, userMessage)
   writeStore(store)
@@ -515,7 +767,7 @@ export function sendCodexPrompt(input: SendCodexPromptInput) {
     },
   })
 
-  runCodexExec(session.key, prompt, runId)
+  runCodexExec(session.key, prompt, runId, input.attachments)
 
   return { runId, sessionKey: session.key }
 }
