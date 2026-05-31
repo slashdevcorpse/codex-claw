@@ -21,6 +21,7 @@ import { Route as ApiRepoContextRouteImport } from './routes/api/repo-context'
 import { Route as ApiPingRouteImport } from './routes/api/ping'
 import { Route as ApiPathsRouteImport } from './routes/api/paths'
 import { Route as ApiHistoryRouteImport } from './routes/api/history'
+import { Route as ApiGitReviewRouteImport } from './routes/api/git-review'
 
 const NewRoute = NewRouteImport.update({
   id: '/new',
@@ -82,11 +83,17 @@ const ApiHistoryRoute = ApiHistoryRouteImport.update({
   path: '/api/history',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiGitReviewRoute = ApiGitReviewRouteImport.update({
+  id: '/api/git-review',
+  path: '/api/git-review',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/connect': typeof ConnectRoute
   '/new': typeof NewRoute
+  '/api/git-review': typeof ApiGitReviewRoute
   '/api/history': typeof ApiHistoryRoute
   '/api/paths': typeof ApiPathsRoute
   '/api/ping': typeof ApiPingRoute
@@ -101,6 +108,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/connect': typeof ConnectRoute
   '/new': typeof NewRoute
+  '/api/git-review': typeof ApiGitReviewRoute
   '/api/history': typeof ApiHistoryRoute
   '/api/paths': typeof ApiPathsRoute
   '/api/ping': typeof ApiPingRoute
@@ -116,6 +124,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/connect': typeof ConnectRoute
   '/new': typeof NewRoute
+  '/api/git-review': typeof ApiGitReviewRoute
   '/api/history': typeof ApiHistoryRoute
   '/api/paths': typeof ApiPathsRoute
   '/api/ping': typeof ApiPingRoute
@@ -132,6 +141,7 @@ export interface FileRouteTypes {
     | '/'
     | '/connect'
     | '/new'
+    | '/api/git-review'
     | '/api/history'
     | '/api/paths'
     | '/api/ping'
@@ -146,6 +156,7 @@ export interface FileRouteTypes {
     | '/'
     | '/connect'
     | '/new'
+    | '/api/git-review'
     | '/api/history'
     | '/api/paths'
     | '/api/ping'
@@ -160,6 +171,7 @@ export interface FileRouteTypes {
     | '/'
     | '/connect'
     | '/new'
+    | '/api/git-review'
     | '/api/history'
     | '/api/paths'
     | '/api/ping'
@@ -175,6 +187,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ConnectRoute: typeof ConnectRoute
   NewRoute: typeof NewRoute
+  ApiGitReviewRoute: typeof ApiGitReviewRoute
   ApiHistoryRoute: typeof ApiHistoryRoute
   ApiPathsRoute: typeof ApiPathsRoute
   ApiPingRoute: typeof ApiPingRoute
@@ -272,6 +285,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiHistoryRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/git-review': {
+      id: '/api/git-review'
+      path: '/api/git-review'
+      fullPath: '/api/git-review'
+      preLoaderRoute: typeof ApiGitReviewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -279,6 +299,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ConnectRoute: ConnectRoute,
   NewRoute: NewRoute,
+  ApiGitReviewRoute: ApiGitReviewRoute,
   ApiHistoryRoute: ApiHistoryRoute,
   ApiPathsRoute: ApiPathsRoute,
   ApiPingRoute: ApiPingRoute,

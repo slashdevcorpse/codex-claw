@@ -2,6 +2,7 @@ import { getMessageTimestamp, normalizeSessions, readError } from './utils'
 import type { QueryClient } from '@tanstack/react-query'
 import type {
   GatewayMessage,
+  GitReviewPayload,
   HistoryResponse,
   RepoContextPayload,
   RepoContextSelection,
@@ -125,6 +126,24 @@ export async function fetchRepoContext(
   const res = await fetch('/api/repo-context' + suffix)
   if (!res.ok) throw new Error(await readError(res))
   return (await res.json()) as RepoContextPayload
+}
+
+export async function fetchGitReview(): Promise<GitReviewPayload> {
+  const res = await fetch('/api/git-review')
+  if (!res.ok) throw new Error(await readError(res))
+  return (await res.json()) as GitReviewPayload
+}
+
+export async function stageGitReviewFiles(
+  paths: Array<string>,
+): Promise<GitReviewPayload> {
+  const res = await fetch('/api/git-review', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ action: 'stage', paths }),
+  })
+  if (!res.ok) throw new Error(await readError(res))
+  return (await res.json()) as GitReviewPayload
 }
 
 export function updateHistoryMessages(

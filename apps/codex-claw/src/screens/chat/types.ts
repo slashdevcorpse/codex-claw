@@ -167,3 +167,23 @@ export type RepoContextPayload = {
   applicableAgents: Array<RepoAgentFile>
   estimate: RepoContextEstimate
 }
+
+export type GitFileState = 'staged' | 'unstaged' | 'untracked' | 'deleted'
+
+export type GitReviewFile = {
+  path: string
+  state: GitFileState
+  indexStatus: string
+  worktreeStatus: string
+  diff: string
+}
+
+export type GitReviewPayload = {
+  ok: boolean
+  workdir: string
+  branch: string
+  files: Array<GitReviewFile>
+  groups: Record<GitFileState, Array<GitReviewFile>>
+  patch: string
+  draftCommitMessage: string
+}
