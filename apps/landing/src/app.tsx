@@ -78,20 +78,20 @@ export function App() {
       <main className="mx-auto flex min-h-screen max-w-4xl flex-col space-y-32 px-6 py-20">
         <div className="flex flex-col space-y-14">
           <div className="space-y-6">
-            <h1 className="font-medium">WebClaw</h1>
-            <p className="text-neutral-500">Fast web client for OpenClaw.</p>
+            <h1 className="font-medium">CodexClaw</h1>
+            <p className="text-neutral-500">Alpha web client for Codex CLI.</p>
             <div className="flex flex-wrap gap-3">
               <Button
                 className="gap-1.5"
                 onClick={() =>
                   window.open(
-                    "https://github.com/ibelick/webclaw",
+                    "https://github.com/slashdevcorpse/codex-claw",
                     "_blank",
                     "noopener,noreferrer"
                   )
                 }
               >
-                Github Repository
+                GitHub Repository
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   width="24"
@@ -152,8 +152,8 @@ export function App() {
                       "Thanks for the details. You're on the list. We'll follow up with early access."
                     ) : (
                       <>
-                        Shared sessions, history, and a real workspace for
-                        OpenClaw. <br />
+                        Local sessions, history, and a browser surface for
+                        Codex CLI. <br />
                         Request early access.
                       </>
                     )}
@@ -195,7 +195,7 @@ export function App() {
                       </label>
                       <label className="flex flex-col gap-1.5 text-sm text-neutral-700">
                         Company name
-                        <Input placeholder="OpenClaw" name="companyName" />
+                        <Input placeholder="CodexClaw" name="companyName" />
                       </label>
                       <label className="flex flex-col gap-1.5 text-sm text-neutral-700">
                         Company size
@@ -216,7 +216,7 @@ export function App() {
                         <Input placeholder="eg. Engineering lead" name="role" />
                       </label>
                       <label className="flex flex-col gap-1.5 text-sm text-neutral-700 sm:col-span-2">
-                        How are you using OpenClaw today?
+                        How are you using Codex CLI today?
                         <Textarea
                           placeholder="Share your use case, infra needs, or rollout plans."
                           name="usage"
@@ -240,9 +240,9 @@ export function App() {
           </div>
 
           <img
-            alt="OpenClaw interface preview"
+            alt="CodexClaw interface preview"
             className="pointer-events-none h-full w-full rounded-[6px] select-none"
-            src="/webclaw-cover.webp"
+            src="/codex-claw-cover.webp"
             style={{
               boxShadow: `
             0px 0px 0px 1px rgba(0,0,0,0.08),
@@ -255,7 +255,10 @@ export function App() {
         <div className="space-y-6">
           <h2 className="font-[450]">Installation</h2>
           <CodeBlock className="rounded-[6px] border-none bg-[#FCFCFC] shadow-2xs outline-1 outline-neutral-950/10 [&>div]:bg-[#FCFCFC] [&>div>pre]:!bg-[#FCFCFC]">
-            <CodeBlockCode code={`npx webclaw`} language="bash" />
+            <CodeBlockCode
+              code={`git clone https://github.com/slashdevcorpse/codex-claw.git\ncd codex-claw\npnpm install\npnpm dev`}
+              language="bash"
+            />
           </CodeBlock>
         </div>
       </main>

@@ -24,7 +24,7 @@ type RateLimitState = {
   resetAt: number;
 };
 
-const ALLOWED_ORIGINS = new Set(["https://webclaw.dev"]);
+const ALLOWED_ORIGINS = new Set(["https://codex-claw.dev"]);
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX = 8;
 const rateLimitCache = new Map<string, RateLimitState>();
@@ -50,7 +50,7 @@ export default {
         return new Response(null, {
           status: 204,
           headers: {
-            "Access-Control-Allow-Origin": "https://webclaw.dev",
+            "Access-Control-Allow-Origin": "https://codex-claw.dev",
             "Access-Control-Allow-Methods": "POST, OPTIONS",
             "Access-Control-Allow-Headers": "Content-Type",
           },
@@ -137,7 +137,7 @@ export default {
       }
 
       const webhookPayload: SlackWebhookPayload = {
-        text: `New WebClaw workspace lead\n${buildSlackMessage(payload)}`,
+        text: `New CodexClaw workspace lead\n${buildSlackMessage(payload)}`,
       };
 
       const slackResponse = await fetch(env.SLACK_WEBHOOK_URL, {
