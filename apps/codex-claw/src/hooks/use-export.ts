@@ -5,7 +5,13 @@ import { chatQueryKeys } from '../screens/chat/chat-queries'
 import { getMessageTimestamp, textFromMessage } from '../screens/chat/utils'
 import type { GatewayMessage, HistoryResponse } from '../screens/chat/types'
 
-type ExportFormat = 'markdown' | 'json' | 'text'
+export type ExportFormat =
+  | 'markdown'
+  | 'json'
+  | 'text'
+  | 'bundle'
+  | 'issue-draft'
+  | 'pr-draft'
 
 type UseExportInput = {
   currentFriendlyId: string
@@ -22,6 +28,15 @@ export function useExport({
 
   const exportConversation = useCallback(
     function exportConversation(format: ExportFormat) {
+      if (isServerExport(format)) {
+        exportServerHandoff({
+          currentFriendlyId,
+          currentSessionKey,
+          format,
+        })
+        return
+      }
+
       const historyKey = chatQueryKeys.history(
         currentFriendlyId,
         currentSessionKey || currentFriendlyId,
@@ -67,6 +82,38 @@ export function useExport({
   )
 
   return { exportConversation }
+}
+
+function isServerExport(format: ExportFormat) {
+  return (
+    format === 'bundle' ||
+    format === 'issue-draft' ||
+    format === 'pr-draft'
+  )
+}
+
+function handoffKind(format: ExportFormat) {
+  if (format === 'issue-draft') return 'issue'
+  if (format === 'pr-draft') return 'pr'
+  return 'bundle'
+}
+
+function exportServerHandoff(input: {
+  currentFriendlyId: string
+  currentSessionKey: string
+  format: ExportFormat
+}) {
+  if (typeof window === 'undefined') return
+  const params = new URLSearchParams()
+  params.set('kind', handoffKind(input.format))
+  params.set('download', '1')
+  if (input.currentSessionKey) {
+    params.set('sessionKey', input.currentSessionKey)
+  }
+  if (input.currentFriendlyId) {
+    params.set('friendlyId', input.currentFriendlyId)
+  }
+  window.location.assign('/api/session-bundle?' + params.toString())
 }
 
 function formatTimestamp(message: GatewayMessage): string {

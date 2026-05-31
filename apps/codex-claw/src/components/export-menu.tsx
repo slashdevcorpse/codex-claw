@@ -4,6 +4,7 @@ import { useCallback, useState } from 'react'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Download01Icon } from '@hugeicons/core-free-icons'
 
+import type { ExportFormat } from '@/hooks/use-export'
 import {
   MenuContent,
   MenuItem,
@@ -19,8 +20,6 @@ import {
 import { buttonVariants } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
-type ExportFormat = 'markdown' | 'json' | 'text'
-
 type ExportMenuProps = {
   onExport: (format: ExportFormat) => void
   disabled?: boolean
@@ -30,6 +29,9 @@ const formats: Array<{ format: ExportFormat; label: string; ext: string }> = [
   { format: 'markdown', label: 'Markdown', ext: '.md' },
   { format: 'json', label: 'JSON', ext: '.json' },
   { format: 'text', label: 'Plain Text', ext: '.txt' },
+  { format: 'bundle', label: 'Redacted Bundle', ext: '.md' },
+  { format: 'issue-draft', label: 'Issue Draft', ext: '.md' },
+  { format: 'pr-draft', label: 'PR Draft', ext: '.md' },
 ]
 
 export function ExportMenu({ onExport, disabled }: ExportMenuProps) {
