@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate app and package
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run CodexClaw app tests
+        run: pnpm -C apps/codex-claw test
+
+      - name: Build CodexClaw app
+        run: pnpm -C apps/codex-claw build
+
+      - name: Build landing page
+        run: pnpm -C apps/landing build
+
+      - name: Check package contents
+        run: pnpm pack:codex-claw
+
+      - name: Audit dependencies
+        run: pnpm audit --audit-level low
