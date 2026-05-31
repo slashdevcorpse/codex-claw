@@ -20,6 +20,12 @@ function workspaceInput(body: Record<string, unknown>) {
       typeof body.codexSandbox === 'string'
         ? body.codexSandbox.trim()
         : undefined,
+    codexApproval:
+      typeof body.codexApproval === 'string'
+        ? body.codexApproval.trim()
+        : undefined,
+    runProfile:
+      typeof body.runProfile === 'string' ? body.runProfile.trim() : undefined,
     codexWorkdir:
       typeof body.codexWorkdir === 'string'
         ? body.codexWorkdir.trim()

@@ -78,6 +78,8 @@ type SendCodexPromptInput = {
   thinking?: string
   attachments?: Array<AttachmentInput>
   contextBlock?: string
+  runProfile?: string
+  confirmedRisk?: boolean
   idempotencyKey?: string
 }
 
@@ -128,6 +130,8 @@ type WorkspaceRecord = {
   name: string
   codexCommand: string
   codexSandbox: string
+  codexApproval: string
+  runProfile: RunProfileId
   codexWorkdir: string
   stateDir: string
   createdAt: number
@@ -145,10 +149,17 @@ type WorkspaceInput = {
   name?: string
   codexCommand?: string
   codexSandbox?: string
+  codexApproval?: string
+  runProfile?: string
   codexWorkdir?: string
   stateDir?: string
   active?: boolean
 }
+
+type RunProfileId =
+  | 'read-only-inspect'
+  | 'workspace-write'
+  | 'elevated-manual-review'
 
 type WorkspaceHealthStatus = 'ok' | 'warning' | 'error'
 
@@ -201,6 +212,44 @@ const supportedSandboxModes = new Set([
   'workspace-write',
   'danger-full-access',
 ])
+const supportedApprovalPolicies = new Set([
+  'untrusted',
+  'on-request',
+  'on-failure',
+  'never',
+])
+const runProfiles: Record<
+  RunProfileId,
+  {
+    id: RunProfileId
+    label: string
+    sandbox: string
+    approval: string
+    requiresConfirmation: boolean
+  }
+> = {
+  'read-only-inspect': {
+    id: 'read-only-inspect',
+    label: 'Read-only inspect',
+    sandbox: 'read-only',
+    approval: 'untrusted',
+    requiresConfirmation: false,
+  },
+  'workspace-write': {
+    id: 'workspace-write',
+    label: 'Workspace write',
+    sandbox: 'workspace-write',
+    approval: 'on-request',
+    requiresConfirmation: true,
+  },
+  'elevated-manual-review': {
+    id: 'elevated-manual-review',
+    label: 'Elevated manual review',
+    sandbox: 'danger-full-access',
+    approval: 'untrusted',
+    requiresConfirmation: true,
+  },
+}
 let storeCache: SessionStore | null = null
 let workspaceStoreCache: WorkspaceStore | null = null
 let stateVersion = 0
@@ -231,6 +280,10 @@ function getCodexSandbox() {
   return getActiveWorkspace().codexSandbox
 }
 
+function getCodexApproval() {
+  return getActiveWorkspace().codexApproval
+}
+
 function getCodexWorkdir() {
   return getActiveWorkspace().codexWorkdir
 }
@@ -242,6 +295,11 @@ function defaultCodexCommand() {
 function defaultCodexSandbox() {
   const configured = process.env.CODEX_CLI_SANDBOX?.trim()
   return normalizeSandbox(configured)
+}
+
+function defaultCodexApproval() {
+  const configured = process.env.CODEX_CLI_APPROVAL?.trim()
+  return normalizeApproval(configured)
 }
 
 function defaultCodexWorkdir() {
@@ -256,6 +314,8 @@ function defaultWorkspace(now = Date.now()): WorkspaceRecord {
     name: 'Default workspace',
     codexCommand: defaultCodexCommand(),
     codexSandbox: defaultCodexSandbox(),
+    codexApproval: defaultCodexApproval(),
+    runProfile: profileFromSandbox(defaultCodexSandbox()),
     codexWorkdir: defaultCodexWorkdir(),
     stateDir: getBaseStateDir(),
     createdAt: now,
@@ -267,6 +327,30 @@ function normalizeSandbox(value: string | undefined) {
   const trimmed = value?.trim()
   if (trimmed && supportedSandboxModes.has(trimmed)) return trimmed
   return 'read-only'
+}
+
+function normalizeApproval(value: string | undefined) {
+  const trimmed = value?.trim()
+  if (trimmed && supportedApprovalPolicies.has(trimmed)) return trimmed
+  return 'untrusted'
+}
+
+function normalizeRunProfile(value: unknown): RunProfileId {
+  if (typeof value === 'string' && value in runProfiles) {
+    return value as RunProfileId
+  }
+  return 'read-only-inspect'
+}
+
+function profileFromSandbox(sandbox: string): RunProfileId {
+  if (sandbox === 'workspace-write') return 'workspace-write'
+  if (sandbox === 'danger-full-access') return 'elevated-manual-review'
+  return 'read-only-inspect'
+}
+
+function getRunProfile(id?: string) {
+  const workspace = getActiveWorkspace()
+  return runProfiles[normalizeRunProfile(id ?? workspace.runProfile)]
 }
 
 function normalizeRequiredString(value: unknown, fallback: string) {
@@ -309,6 +393,22 @@ function normalizeWorkspaceRecord(
   value: Partial<WorkspaceRecord>,
   fallback: WorkspaceRecord,
 ): WorkspaceRecord {
+  const codexSandbox = normalizeSandbox(
+    value.codexSandbox || fallback.codexSandbox,
+  )
+  const runProfile =
+    typeof value.runProfile === 'string'
+      ? normalizeRunProfile(value.runProfile)
+      : value.codexSandbox
+        ? profileFromSandbox(codexSandbox)
+        : fallback.runProfile
+  const codexApproval = normalizeApproval(
+    value.codexApproval ||
+      (value.codexSandbox || value.runProfile
+        ? runProfiles[runProfile].approval
+        : fallback.codexApproval),
+  )
+
   return {
     id: normalizeRequiredString(value.id, fallback.id),
     name: normalizeRequiredString(value.name, fallback.name),
@@ -316,7 +416,9 @@ function normalizeWorkspaceRecord(
       value.codexCommand,
       fallback.codexCommand,
     ),
-    codexSandbox: normalizeSandbox(value.codexSandbox || fallback.codexSandbox),
+    codexSandbox,
+    codexApproval,
+    runProfile,
     codexWorkdir: normalizePath(value.codexWorkdir, fallback.codexWorkdir),
     stateDir: normalizePath(value.stateDir, fallback.stateDir),
     createdAt:
@@ -584,6 +686,10 @@ function emit(sessionKey: string, event: CodexStreamEvent) {
 
 function buildUserPrompt(input: SendCodexPromptInput) {
   const parts = [input.message.trim()].filter(Boolean)
+  const profile = getRunProfile(input.runProfile)
+  parts.push(
+    `Run profile: ${profile.label} (sandbox: ${profile.sandbox}, approval: ${profile.approval})`,
+  )
   if (input.thinking) {
     parts.push(`Requested thinking level: ${input.thinking}`)
   }
@@ -598,8 +704,15 @@ function buildUserPrompt(input: SendCodexPromptInput) {
   return parts.join('\n\n')
 }
 
-function buildCodexArgs(imagePaths: Array<string>) {
-  const args = ['-s', getCodexSandbox(), '-C', getCodexWorkdir()]
+function buildCodexArgs(imagePaths: Array<string>, profile = getRunProfile()) {
+  const args = [
+    '-s',
+    profile.sandbox || getCodexSandbox(),
+    '-a',
+    profile.approval || getCodexApproval(),
+    '-C',
+    getCodexWorkdir(),
+  ]
   args.push('exec')
   args.push('--ignore-user-config')
   args.push('--json')
@@ -935,6 +1048,7 @@ function runCodexExec(
   prompt: string,
   runId: string,
   attachments?: Array<AttachmentInput>,
+  runProfile?: RunProfileId,
 ) {
   const store = readStore()
   const session = ensureSession(sessionKey)
@@ -943,7 +1057,10 @@ function runCodexExec(
       ? getCodexCommand()
       : resolveCodexCommand(getCodexCommand())
   const preparedAttachments = prepareAttachmentFiles(runId, attachments)
-  const args = buildCodexArgs(preparedAttachments.imagePaths)
+  const args = buildCodexArgs(
+    preparedAttachments.imagePaths,
+    getRunProfile(runProfile),
+  )
   const child = spawn(command, args, {
     cwd: getCodexWorkdir(),
     env: process.env,
@@ -1368,6 +1485,8 @@ export function createCodexWorkspace(input: WorkspaceInput) {
       name,
       codexCommand: input.codexCommand,
       codexSandbox: input.codexSandbox,
+      codexApproval: input.codexApproval,
+      runProfile: input.runProfile,
       codexWorkdir: input.codexWorkdir,
       stateDir: input.stateDir,
       createdAt: now,
@@ -1409,6 +1528,8 @@ export function patchCodexWorkspace(input: WorkspaceInput) {
       name: input.name ?? existing.name,
       codexCommand: input.codexCommand ?? existing.codexCommand,
       codexSandbox: input.codexSandbox ?? existing.codexSandbox,
+      codexApproval: input.codexApproval ?? existing.codexApproval,
+      runProfile: input.runProfile ?? existing.runProfile,
       codexWorkdir: input.codexWorkdir ?? existing.codexWorkdir,
       stateDir: input.stateDir ?? existing.stateDir,
       updatedAt: Date.now(),
@@ -1501,6 +1622,10 @@ export function subscribeCodexEvents(
 }
 
 export function sendCodexPrompt(input: SendCodexPromptInput) {
+  const profile = getRunProfile(input.runProfile)
+  if (profile.requiresConfirmation && !input.confirmedRisk) {
+    throw new Error('Run profile requires explicit confirmation.')
+  }
   const store = readStore()
   const session = ensureSession(input.sessionKey || 'main')
   const prompt = buildUserPrompt(input)
@@ -1510,6 +1635,11 @@ export function sendCodexPrompt(input: SendCodexPromptInput) {
     clientId: input.idempotencyKey,
     role: 'user',
     timestamp: Date.now(),
+    details: {
+      runProfile: profile.id,
+      sandbox: profile.sandbox,
+      approval: profile.approval,
+    },
     content: contentFromUserInput(input),
   }
   appendMessage(session, userMessage)
@@ -1527,7 +1657,7 @@ export function sendCodexPrompt(input: SendCodexPromptInput) {
     },
   })
 
-  runCodexExec(session.key, prompt, runId, input.attachments)
+  runCodexExec(session.key, prompt, runId, input.attachments, profile.id)
 
   return { runId, sessionKey: session.key }
 }

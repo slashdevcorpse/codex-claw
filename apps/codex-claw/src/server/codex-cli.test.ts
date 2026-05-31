@@ -7,11 +7,13 @@ import {
   createCodexWorkspace,
   deleteCodexWorkspace,
   getCodexPaths,
+  listCodexSessions,
   listCodexWorkspaces,
   mergeAssistantText,
   patchCodexWorkspace,
   processCodexJsonLine,
   resetCodexServerStateForTests,
+  sendCodexPrompt,
 } from './codex-cli'
 
 describe('processCodexJsonLine', function () {
@@ -119,6 +121,8 @@ describe('codex workspace registry', function () {
     expect(getCodexPaths().workspace).toMatchObject({
       id: 'default',
       codexCommand: 'codex-test',
+      codexApproval: 'untrusted',
+      runProfile: 'read-only-inspect',
       codexWorkdir: tempDir,
       stateDir: path.join(tempDir, 'state'),
     })
@@ -139,9 +143,23 @@ describe('codex workspace registry', function () {
         name: 'Docs repo',
         codexCommand: 'codex-next',
         codexSandbox: 'workspace-write',
+        codexApproval: 'on-request',
+        runProfile: 'workspace-write',
         codexWorkdir: path.join(tempDir, 'docs'),
       },
     })
+  })
+
+  it('requires confirmation before storing risky run profile messages', function () {
+    expect(() =>
+      sendCodexPrompt({
+        sessionKey: 'risk-test',
+        message: 'make a write-capable change',
+        runProfile: 'workspace-write',
+      }),
+    ).toThrow('Run profile requires explicit confirmation.')
+
+    expect(listCodexSessions().sessions).toEqual([])
   })
 
   it('renames and removes non-default workspaces', function () {
