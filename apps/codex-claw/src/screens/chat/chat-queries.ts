@@ -5,6 +5,8 @@ import type {
   HistoryResponse,
   SessionListResponse,
   SessionMeta,
+  WorkspaceListResponse,
+  WorkspaceSummary,
 } from './types'
 
 type GatewayStatusResponse = {
@@ -14,6 +16,7 @@ type GatewayStatusResponse = {
 
 export const chatQueryKeys = {
   sessions: ['chat', 'sessions'] as const,
+  workspaces: ['chat', 'workspaces'] as const,
   history: function history(friendlyId: string, sessionKey: string) {
     return ['chat', 'history', friendlyId, sessionKey] as const
   },
@@ -54,6 +57,59 @@ export async function fetchGatewayStatus(): Promise<GatewayStatusResponse> {
   } finally {
     window.clearTimeout(timeout)
   }
+}
+
+export async function fetchWorkspaces(): Promise<WorkspaceListResponse> {
+  const res = await fetch('/api/workspaces')
+  if (!res.ok) throw new Error(await readError(res))
+  return (await res.json()) as WorkspaceListResponse
+}
+
+export async function createWorkspace(
+  workspace: Partial<WorkspaceSummary> & { active?: boolean },
+): Promise<WorkspaceListResponse> {
+  const res = await fetch('/api/workspaces', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(workspace),
+  })
+  if (!res.ok) throw new Error(await readError(res))
+  return (await res.json()) as WorkspaceListResponse
+}
+
+export async function updateWorkspace(
+  workspace: Partial<WorkspaceSummary> & { id: string; active?: boolean },
+): Promise<WorkspaceListResponse> {
+  const res = await fetch('/api/workspaces', {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(workspace),
+  })
+  if (!res.ok) throw new Error(await readError(res))
+  return (await res.json()) as WorkspaceListResponse
+}
+
+export async function activateWorkspace(
+  id: string,
+): Promise<WorkspaceListResponse> {
+  const res = await fetch('/api/workspaces', {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ id, action: 'activate' }),
+  })
+  if (!res.ok) throw new Error(await readError(res))
+  return (await res.json()) as WorkspaceListResponse
+}
+
+export async function deleteWorkspace(
+  id: string,
+): Promise<WorkspaceListResponse> {
+  const query = new URLSearchParams({ id })
+  const res = await fetch(`/api/workspaces?${query.toString()}`, {
+    method: 'DELETE',
+  })
+  if (!res.ok) throw new Error(await readError(res))
+  return (await res.json()) as WorkspaceListResponse
 }
 
 export function updateHistoryMessages(
