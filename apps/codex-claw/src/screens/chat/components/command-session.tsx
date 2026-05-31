@@ -221,7 +221,7 @@ function CommandSessionDialog({
                                       failed
                                     </span>
                                   ) : null}
-                                  {item.tags.slice(0, 3).map((tag) => (
+                                  {item.tags.slice(0, 3).map((tag: string) => (
                                     <span
                                       key={tag}
                                       className="max-w-20 truncate rounded border border-primary-200 px-1 text-[10px] leading-4 text-primary-600"

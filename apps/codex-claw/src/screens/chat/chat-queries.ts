@@ -9,6 +9,7 @@ import type {
   RepoContextSelection,
   SessionListResponse,
   SessionMeta,
+  SessionSummary,
   TaskListResponse,
   WorkspaceListResponse,
   WorkspaceSummary,
