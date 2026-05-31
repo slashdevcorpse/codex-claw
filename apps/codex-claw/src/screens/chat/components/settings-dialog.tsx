@@ -99,7 +99,7 @@ export function SettingsDialog({
             <div>
               <DialogTitle className="mb-1">Settings</DialogTitle>
               <DialogDescription className="hidden">
-                Configure WebClaw
+                Configure CodexClaw
               </DialogDescription>
             </div>
             <DialogClose
@@ -197,10 +197,10 @@ export function SettingsDialog({
           </SettingsSection>
 
           <SettingsSection title="About">
-            <div className="text-sm text-primary-800">WebClaw (beta)</div>
+            <div className="text-sm text-primary-800">CodexClaw (alpha)</div>
             <div className="flex gap-4 pt-2">
               <a
-                href="https://webclaw.dev/"
+                href="https://github.com/slashdevcorpse/codex-claw"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-sm text-primary-600 hover:text-primary-900 hover:underline"
@@ -208,7 +208,7 @@ export function SettingsDialog({
                 Website
               </a>
               <a
-                href="https://github.com/ibelick/webclaw"
+                href="https://github.com/slashdevcorpse/codex-claw"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-sm text-primary-600 hover:text-primary-900 hover:underline"
@@ -216,12 +216,12 @@ export function SettingsDialog({
                 GitHub
               </a>
               <a
-                href="https://docs.openclaw.ai"
+                href="https://developers.openai.com/codex/cli"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-sm text-primary-600 hover:text-primary-900 hover:underline"
               >
-                OpenClaw docs
+                Codex CLI docs
               </a>
             </div>
           </SettingsSection>

@@ -1,830 +1,578 @@
+import { randomUUID } from 'node:crypto'
+import { spawn, spawnSync } from 'node:child_process'
 import {
-  createHash,
-  createPrivateKey,
-  createPublicKey,
-  generateKeyPairSync,
-  randomUUID,
-  sign,
-} from 'node:crypto'
-import {
-  chmodSync,
   existsSync,
   mkdirSync,
   readFileSync,
+  renameSync,
   writeFileSync,
 } from 'node:fs'
-import { dirname, resolve as pathResolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
-import WebSocket from 'ws'
-import type { KeyObject } from 'node:crypto'
+import os from 'node:os'
+import path from 'node:path'
 
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = dirname(__filename)
-const DEVICE_KEYS_PATH = pathResolve(__dirname, '../../.device-keys.json')
-const ED25519_SPKI_PREFIX = Buffer.from('302a300506032b6570032100', 'hex')
-
-type StoredDeviceKeys = {
-  version: 2
-  algorithm: 'ed25519'
-  publicKeyPem: string
-  privateKeyPem: string
-  createdAtMs: number
-}
-
-type DeviceIdentity = {
-  deviceId: string
-  privateKey: KeyObject
-  publicKeyRawBase64Url: string
-}
-
-function isStoredDeviceKeys(value: unknown): value is StoredDeviceKeys {
-  if (!value || typeof value !== 'object') return false
-  const candidate = value as Record<string, unknown>
-  return (
-    candidate.version === 2 &&
-    candidate.algorithm === 'ed25519' &&
-    typeof candidate.publicKeyPem === 'string' &&
-    typeof candidate.privateKeyPem === 'string'
-  )
-}
-
-function base64UrlEncode(buf: Uint8Array): string {
-  return Buffer.from(buf)
-    .toString('base64')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '')
-}
-
-function derivePublicKeyRaw(publicKey: KeyObject): Buffer {
-  const spki = publicKey.export({ type: 'spki', format: 'der' }) as Buffer
-  if (
-    spki.length === ED25519_SPKI_PREFIX.length + 32 &&
-    spki.subarray(0, ED25519_SPKI_PREFIX.length).equals(ED25519_SPKI_PREFIX)
-  ) {
-    return spki.subarray(ED25519_SPKI_PREFIX.length)
-  }
-  return spki
-}
-
-function deriveDeviceIdFromRawPublicKey(rawPublicKey: Uint8Array): string {
-  return createHash('sha256').update(rawPublicKey).digest('hex')
-}
-
-function importStoredKeyPair(stored: StoredDeviceKeys): {
-  publicKey: KeyObject
-  privateKey: KeyObject
-} {
-  const publicKey = createPublicKey(stored.publicKeyPem)
-  const privateKey = createPrivateKey(stored.privateKeyPem)
-  return { publicKey, privateKey }
-}
-
-function generateAndPersistKeyPair(): {
-  publicKey: KeyObject
-  privateKey: KeyObject
-} {
-  const keyPair = generateKeyPairSync('ed25519')
-  const publicKeyPem = keyPair.publicKey
-    .export({ type: 'spki', format: 'pem' })
-    .toString()
-  const privateKeyPem = keyPair.privateKey
-    .export({ type: 'pkcs8', format: 'pem' })
-    .toString()
-
-  const payload: StoredDeviceKeys = {
-    version: 2,
-    algorithm: 'ed25519',
-    publicKeyPem,
-    privateKeyPem,
-    createdAtMs: Date.now(),
-  }
-
-  mkdirSync(dirname(DEVICE_KEYS_PATH), { recursive: true })
-  writeFileSync(DEVICE_KEYS_PATH, JSON.stringify(payload, null, 2) + '\n', {
-    mode: 0o600,
-  })
-  try {
-    chmodSync(DEVICE_KEYS_PATH, 0o600)
-  } catch {
-    // ignore chmod errors on unsupported filesystems
-  }
-
-  return { publicKey: keyPair.publicKey, privateKey: keyPair.privateKey }
-}
-
-function loadOrCreateDeviceIdentity(): DeviceIdentity {
-  let keyPair: { publicKey: KeyObject; privateKey: KeyObject } | null = null
-
-  if (existsSync(DEVICE_KEYS_PATH)) {
-    try {
-      const stored = JSON.parse(readFileSync(DEVICE_KEYS_PATH, 'utf8')) as unknown
-      if (isStoredDeviceKeys(stored)) {
-        keyPair = importStoredKeyPair(stored)
-      }
-    } catch {
-      // ignore parse/import errors and regenerate
-    }
-  }
-
-  if (!keyPair) {
-    keyPair = generateAndPersistKeyPair()
-  }
-
-  const rawPublicKey = derivePublicKeyRaw(keyPair.publicKey)
-  const deviceId = deriveDeviceIdFromRawPublicKey(rawPublicKey)
-
-  return {
-    deviceId,
-    privateKey: keyPair.privateKey,
-    publicKeyRawBase64Url: base64UrlEncode(rawPublicKey),
-  }
-}
-
-function signPayload(privateKey: KeyObject, payload: string): string {
-  const signature = sign(null, Buffer.from(payload, 'utf8'), privateKey)
-  return base64UrlEncode(signature)
-}
-
-let _deviceIdentityPromise: Promise<DeviceIdentity> | null = null
-function getDeviceIdentity(): Promise<DeviceIdentity> {
-  if (!_deviceIdentityPromise) {
-    _deviceIdentityPromise = Promise.resolve(loadOrCreateDeviceIdentity())
-  }
-  return _deviceIdentityPromise
-}
-
-function reportPairingRequired(reason?: string) {
-  void getDeviceIdentity()
-    .then((identity) => {
-      console.error(
-        `[gateway-ws] Device auth rejected (${reason || 'policy violation'}). Device ID: ${identity.deviceId}`,
-      )
-      console.error(
-        `[gateway-ws] If pairing is required, run: openclaw devices approve ${identity.deviceId}`,
-      )
-    })
-    .catch(() => {
-      console.error(
-        `[gateway-ws] Device auth rejected (${reason || 'policy violation'}).`,
-      )
-    })
-}
-
-type GatewayFrame =
-  | { type: 'req'; id: string; method: string; params?: unknown }
+type MessageContent =
   | {
-      type: 'res'
-      id: string
-      ok: boolean
-      payload?: unknown
-      error?: { code: string; message: string; details?: unknown }
+      type: 'text'
+      text?: string
     }
   | {
-      type: 'event'
-      event: string
-      payload?: unknown
-      seq?: number
-      stateVersion?: number
+      type: 'thinking'
+      thinking?: string
+    }
+  | {
+      type: 'toolCall'
+      id?: string
+      name?: string
+      arguments?: Record<string, unknown>
+      partialJson?: string
     }
 
-type ConnectParams = {
-  minProtocol: number
-  maxProtocol: number
-  client: {
-    id: string
-    displayName?: string
-    version: string
-    platform: string
-    mode: string
-    instanceId?: string
-  }
-  auth?: { token?: string; password?: string }
-  role?: 'operator' | 'node'
-  scopes?: Array<string>
-  device?: {
-    id: string
-    publicKey: string
-    signature: string
-    signedAt: number
-    nonce?: string
-  }
+type CodexMessage = {
+  id?: string
+  role?: string
+  content?: Array<MessageContent>
+  timestamp?: number
+  clientId?: string
+  toolCallId?: string
+  toolName?: string
+  details?: Record<string, unknown>
+  isError?: boolean
 }
 
-type GatewayWaiter = {
-  waitForRes: (id: string) => Promise<unknown>
-  handleMessage: (evt: MessageEvent) => void
+type SessionRecord = {
+  key: string
+  friendlyId: string
+  label?: string
+  title?: string
+  derivedTitle?: string
+  updatedAt: number
+  messages: Array<CodexMessage>
+  lastMessage?: CodexMessage | null
 }
 
-type GatewayEventFrame = {
-  type: 'event'
+type SessionStore = {
+  version: 1
+  sessions: Array<SessionRecord>
+}
+
+type AttachmentInput = {
+  mimeType: string
+  content: string
+}
+
+type SendCodexPromptInput = {
+  sessionKey: string
+  message: string
+  thinking?: string
+  attachments?: Array<AttachmentInput>
+  idempotencyKey?: string
+}
+
+type CodexStreamEvent = {
   event: string
   payload?: unknown
   seq?: number
   stateVersion?: number
 }
 
-type GatewayEventStreamOptions = {
+type CodexExecJsonEvent = {
+  type?: string
+  item?: {
+    type?: string
+    text?: string
+    name?: string
+    arguments?: Record<string, unknown>
+    [key: string]: unknown
+  }
+  usage?: Record<string, unknown>
+  [key: string]: unknown
+}
+
+type CodexPathsPayload = {
+  agentId: string
+  stateDir: string
+  sessionsDir: string
+  storePath: string
+}
+
+const listeners = new Map<string, Set<(event: CodexStreamEvent) => void>>()
+let storeCache: SessionStore | null = null
+let stateVersion = 0
+
+function getStateDir() {
+  const configured = process.env.CODEX_CLAW_STATE_DIR?.trim()
+  if (configured) return path.resolve(configured)
+  return path.join(process.cwd(), '.codex-claw')
+}
+
+function getStorePath() {
+  return path.join(getStateDir(), 'sessions.json')
+}
+
+function getCodexCommand() {
+  return process.env.CODEX_CLI_COMMAND?.trim() || 'codex'
+}
+
+function getCodexSandbox() {
+  return process.env.CODEX_CLI_SANDBOX?.trim() || 'read-only'
+}
+
+function getCodexWorkdir() {
+  const configured = process.env.CODEX_CLI_WORKDIR?.trim()
+  if (configured) return path.resolve(configured)
+  return process.cwd()
+}
+
+function isSessionStore(value: unknown): value is SessionStore {
+  if (!value || typeof value !== 'object') return false
+  const candidate = value as Record<string, unknown>
+  return candidate.version === 1 && Array.isArray(candidate.sessions)
+}
+
+function emptyStore(): SessionStore {
+  return { version: 1, sessions: [] }
+}
+
+function readStore(): SessionStore {
+  if (storeCache) return storeCache
+  const storePath = getStorePath()
+  if (!existsSync(storePath)) {
+    storeCache = emptyStore()
+    return storeCache
+  }
+
+  try {
+    const parsed = JSON.parse(readFileSync(storePath, 'utf8')) as unknown
+    storeCache = isSessionStore(parsed) ? parsed : emptyStore()
+  } catch {
+    storeCache = emptyStore()
+  }
+
+  return storeCache
+}
+
+function writeStore(store: SessionStore) {
+  const stateDir = getStateDir()
+  mkdirSync(stateDir, { recursive: true })
+  const storePath = getStorePath()
+  const tempPath = `${storePath}.${process.pid}.tmp`
+  writeFileSync(tempPath, `${JSON.stringify(store, null, 2)}\n`)
+  renameSync(tempPath, storePath)
+  storeCache = store
+  stateVersion += 1
+}
+
+function deriveFriendlyIdFromKey(key: string) {
+  const trimmed = key.trim()
+  if (!trimmed) return 'main'
+  const parts = trimmed.split(':')
+  const tail = parts[parts.length - 1]
+  return tail && tail.trim() ? tail.trim() : trimmed
+}
+
+function titleFromMessage(message: string) {
+  const title = message.replace(/\s+/g, ' ').trim()
+  if (!title) return 'New Codex session'
+  if (title.length <= 48) return title
+  return `${title.slice(0, 45)}...`
+}
+
+function normalizeSession(session: SessionRecord) {
+  const lastMessage =
+    session.lastMessage ??
+    (session.messages.length > 0
+      ? session.messages[session.messages.length - 1]
+      : null)
+  return {
+    key: session.key,
+    friendlyId: session.friendlyId,
+    label: session.label,
+    title: session.title,
+    derivedTitle: session.derivedTitle,
+    updatedAt: session.updatedAt,
+    lastMessage,
+  }
+}
+
+function createSession(label?: string, key?: string): SessionRecord {
+  const now = Date.now()
+  const sessionKey = key && key.trim() ? key.trim() : randomUUID()
+  const title = label || 'New Codex session'
+  return {
+    key: sessionKey,
+    friendlyId: deriveFriendlyIdFromKey(sessionKey),
+    label,
+    title,
+    derivedTitle: title,
+    updatedAt: now,
+    messages: [],
+    lastMessage: null,
+  }
+}
+
+function findSession(store: SessionStore, key: string) {
+  return store.sessions.find(
+    (session) => session.key === key || session.friendlyId === key,
+  )
+}
+
+function ensureSession(key: string, label?: string) {
+  const store = readStore()
+  const existing = findSession(store, key)
+  if (existing) {
+    if (label) {
+      existing.label = label
+      existing.title = label
+      existing.derivedTitle = label
+      existing.updatedAt = Date.now()
+      writeStore(store)
+    }
+    return existing
+  }
+
+  const session = createSession(label, key)
+  store.sessions.unshift(session)
+  writeStore(store)
+  return session
+}
+
+function appendMessage(session: SessionRecord, message: CodexMessage) {
+  session.messages.push(message)
+  session.lastMessage = message
+  session.updatedAt =
+    typeof message.timestamp === 'number' && Number.isFinite(message.timestamp)
+      ? message.timestamp
+      : Date.now()
+
+  const firstUserText = session.messages
+    .filter((item) => item.role === 'user')
+    .map(textFromMessage)
+    .find((text) => text.length > 0)
+  if (!session.label && firstUserText) {
+    session.derivedTitle = titleFromMessage(firstUserText)
+    session.title = session.derivedTitle
+  }
+}
+
+function textFromMessage(message: CodexMessage) {
+  return Array.isArray(message.content)
+    ? message.content
+        .map((part) => (part.type === 'text' ? String(part.text ?? '') : ''))
+        .join('')
+        .trim()
+    : ''
+}
+
+function emit(sessionKey: string, event: CodexStreamEvent) {
+  const keys = new Set([sessionKey, deriveFriendlyIdFromKey(sessionKey)])
+  for (const key of keys) {
+    const subscribers = listeners.get(key)
+    if (!subscribers) continue
+    for (const listener of subscribers) {
+      listener(event)
+    }
+  }
+}
+
+function buildUserPrompt(input: SendCodexPromptInput) {
+  const parts = [input.message.trim()].filter(Boolean)
+  if (input.thinking) {
+    parts.push(`Requested thinking level: ${input.thinking}`)
+  }
+  if (input.attachments && input.attachments.length > 0) {
+    parts.push(
+      `Attachments were provided, but CodexClaw alpha currently sends text prompts only. Attachment count: ${input.attachments.length}.`,
+    )
+  }
+  return parts.join('\n\n')
+}
+
+function buildCodexArgs(prompt: string) {
+  const args = ['-s', getCodexSandbox(), '-C', getCodexWorkdir()]
+  args.push('exec')
+  args.push('--ignore-user-config')
+  args.push('--json')
+  args.push('--skip-git-repo-check')
+  args.push(prompt)
+  return args
+}
+
+function messageFromAssistantText(text: string): CodexMessage {
+  return {
+    id: randomUUID(),
+    role: 'assistant',
+    timestamp: Date.now(),
+    content: [{ type: 'text', text }],
+  }
+}
+
+function errorMessage(text: string): CodexMessage {
+  return {
+    id: randomUUID(),
+    role: 'assistant',
+    timestamp: Date.now(),
+    isError: true,
+    content: [{ type: 'text', text }],
+  }
+}
+
+function processCodexJsonLine(line: string) {
+  if (!line.startsWith('{')) return null
+  try {
+    const event = JSON.parse(line) as CodexExecJsonEvent
+    if (event.type === 'item.completed' && event.item?.type === 'agent_message') {
+      const text = typeof event.item.text === 'string' ? event.item.text : ''
+      return text ? messageFromAssistantText(text) : null
+    }
+  } catch {
+    return null
+  }
+  return null
+}
+
+function runCodexExec(sessionKey: string, prompt: string, runId: string) {
+  const store = readStore()
+  const session = ensureSession(sessionKey)
+  const command = getCodexCommand()
+  const args = buildCodexArgs(prompt)
+  const child = spawn(command, args, {
+    cwd: getCodexWorkdir(),
+    env: process.env,
+    shell: process.platform === 'win32',
+  })
+
+  let stdoutBuffer = ''
+  let stderrBuffer = ''
+  let emittedFinal = false
+
+  child.stdout.setEncoding('utf8')
+  child.stdout.on('data', (chunk: string) => {
+    stdoutBuffer += chunk
+    const lines = stdoutBuffer.split(/\r?\n/)
+    stdoutBuffer = lines.pop() ?? ''
+    for (const line of lines) {
+      const message = processCodexJsonLine(line.trim())
+      if (!message) continue
+      appendMessage(session, message)
+      writeStore(store)
+      emittedFinal = true
+      emit(session.key, {
+        event: 'chat',
+        stateVersion,
+        payload: {
+          runId,
+          sessionKey: session.key,
+          state: 'final',
+          message,
+        },
+      })
+    }
+  })
+
+  child.stderr.setEncoding('utf8')
+  child.stderr.on('data', (chunk: string) => {
+    stderrBuffer += chunk
+  })
+
+  child.on('error', (error) => {
+    const message = errorMessage(error.message)
+    appendMessage(session, message)
+    writeStore(store)
+    emit(session.key, {
+      event: 'chat',
+      stateVersion,
+      payload: {
+        runId,
+        sessionKey: session.key,
+        state: 'error',
+        message,
+      },
+    })
+  })
+
+  child.on('close', (code) => {
+    const trailing = processCodexJsonLine(stdoutBuffer.trim())
+    if (trailing) {
+      appendMessage(session, trailing)
+      writeStore(store)
+      emittedFinal = true
+      emit(session.key, {
+        event: 'chat',
+        stateVersion,
+        payload: {
+          runId,
+          sessionKey: session.key,
+          state: 'final',
+          message: trailing,
+        },
+      })
+      return
+    }
+
+    if (emittedFinal && code === 0) return
+
+    const detail = stderrBuffer.trim()
+    const fallback =
+      code === 0
+        ? 'Codex CLI finished without returning an assistant message.'
+        : `Codex CLI exited with status ${code ?? 'unknown'}.`
+    const message = errorMessage(detail ? `${fallback}\n\n${detail}` : fallback)
+    appendMessage(session, message)
+    writeStore(store)
+    emit(session.key, {
+      event: 'chat',
+      stateVersion,
+      payload: {
+        runId,
+        sessionKey: session.key,
+        state: 'error',
+        message,
+      },
+    })
+  })
+}
+
+export function getCodexPaths(): CodexPathsPayload {
+  const stateDir = getStateDir()
+  return {
+    agentId: 'codex-cli',
+    stateDir,
+    sessionsDir: stateDir,
+    storePath: getStorePath(),
+  }
+}
+
+export function subscribeCodexEvents(
+  key: string,
+  listener: (event: CodexStreamEvent) => void,
+) {
+  const normalizedKey = key || 'main'
+  const subscribers = listeners.get(normalizedKey) ?? new Set()
+  subscribers.add(listener)
+  listeners.set(normalizedKey, subscribers)
+
+  return function unsubscribe() {
+    subscribers.delete(listener)
+    if (subscribers.size === 0) {
+      listeners.delete(normalizedKey)
+    }
+  }
+}
+
+export async function sendCodexPrompt(input: SendCodexPromptInput) {
+  const store = readStore()
+  const session = ensureSession(input.sessionKey || 'main')
+  const prompt = buildUserPrompt(input)
+
+  const userMessage: CodexMessage = {
+    id: input.idempotencyKey || randomUUID(),
+    clientId: input.idempotencyKey,
+    role: 'user',
+    timestamp: Date.now(),
+    content: [{ type: 'text', text: input.message }],
+  }
+  appendMessage(session, userMessage)
+  writeStore(store)
+
+  const runId = randomUUID()
+  emit(session.key, {
+    event: 'chat',
+    stateVersion,
+    payload: {
+      runId,
+      sessionKey: session.key,
+      state: 'queued',
+      message: userMessage,
+    },
+  })
+
+  runCodexExec(session.key, prompt, runId)
+
+  return { runId, sessionKey: session.key }
+}
+
+export async function getCodexHistory(input: {
   sessionKey?: string
   friendlyId?: string
-  signal?: AbortSignal
-  onEvent: (event: GatewayEventFrame) => void
-  onError?: (error: Error) => void
-}
-
-type GatewayClient = {
-  connect: () => Promise<void>
-  sendReq: <TPayload = unknown>(
-    method: string,
-    params?: unknown,
-  ) => Promise<TPayload>
-  close: () => void
-  setOnEvent: (handler?: (event: GatewayEventFrame) => void) => void
-  setOnError: (handler?: (error: Error) => void) => void
-  isClosed: () => boolean
-}
-
-type GatewayClientEntry = {
-  key: string
-  refs: number
-  client: GatewayClient
-}
-
-type GatewayClientHandle = {
-  client: GatewayClient
-  release: () => void
-}
-
-const sharedGatewayClients = new Map<string, GatewayClientEntry>()
-
-function getGatewayConfig() {
-  const url = process.env.CLAWDBOT_GATEWAY_URL?.trim() || 'ws://127.0.0.1:18789'
-  const token = process.env.CLAWDBOT_GATEWAY_TOKEN?.trim() || ''
-  const password = process.env.CLAWDBOT_GATEWAY_PASSWORD?.trim() || ''
-
-  // For a minimal dashboard we require shared auth, otherwise we'd need a device identity signature.
-  if (!token && !password) {
-    throw new Error(
-      'Missing gateway auth. Set CLAWDBOT_GATEWAY_TOKEN (recommended) or CLAWDBOT_GATEWAY_PASSWORD in the server environment.',
-    )
-  }
-
-  return { url, token, password }
-}
-
-async function buildConnectParams(
-  token: string,
-  password: string,
-  nonce?: string,
-): Promise<ConnectParams> {
-  const clientId = 'gateway-client'
-  const clientMode = 'ui'
-  const role = 'operator'
-  const scopes = ['operator.admin']
-
-  const params: ConnectParams = {
-    minProtocol: 3,
-    maxProtocol: 3,
-    client: {
-      id: clientId,
-      displayName: 'webclaw',
-      version: 'dev',
-      platform: process.platform,
-      mode: clientMode,
-      instanceId: randomUUID(),
-    },
-    auth: {
-      token: token || undefined,
-      password: password || undefined,
-    },
-    role,
-    scopes,
-  }
-
-  try {
-    const identity = await getDeviceIdentity()
-    const signedAt = Date.now()
-    const version = nonce ? 'v2' : 'v1'
-    const base = [
-      version,
-      identity.deviceId,
-      clientId,
-      clientMode,
-      role,
-      scopes.join(','),
-      String(signedAt),
-      token || '',
-    ]
-    if (version === 'v2') base.push(nonce || '')
-    const payload = base.join('|')
-    const signature = await signPayload(identity.privateKey, payload)
-
-    params.device = {
-      id: identity.deviceId,
-      publicKey: identity.publicKeyRawBase64Url,
-      signature,
-      signedAt,
-      nonce,
-    }
-  } catch (err) {
-    console.warn(
-      '[gateway-ws] Device auth unavailable, continuing without device signature:',
-      err instanceof Error ? err.message : String(err),
-    )
-  }
-
-  return params
-}
-
-/**
- * Wait for the connect.challenge event from the gateway.
- * The gateway sends this immediately after WS open, before any connect request.
- * Returns the nonce string.
- */
-function waitForConnectChallenge(ws: WebSocket, timeoutMs = 5000): Promise<string> {
-  return new Promise<string>((resolve, reject) => {
-    const timer = setTimeout(() => {
-      ws.removeEventListener('message', handler)
-      reject(new Error('Timed out waiting for connect.challenge event'))
-    }, timeoutMs)
-
-    function handler(evt: MessageEvent) {
-      try {
-        const data = typeof evt.data === 'string' ? evt.data : ''
-        const parsed = JSON.parse(data) as GatewayFrame
-        if (parsed.type === 'event' && (parsed as any).event === 'connect.challenge') {
-          const payload = (parsed as any).payload as { nonce?: string } | undefined
-          const nonce = payload?.nonce
-          if (typeof nonce === 'string' && nonce.trim()) {
-            clearTimeout(timer)
-            ws.removeEventListener('message', handler)
-            resolve(nonce.trim())
-          }
-        }
-      } catch {
-        // ignore parse errors
-      }
-    }
-
-    ws.addEventListener('message', handler)
-  })
-}
-
-async function connectGateway(ws: WebSocket): Promise<void> {
-  const { token, password } = getGatewayConfig()
-  await wsOpen(ws)
-
-  // Wait for the connect.challenge event containing the nonce
-  const nonce = await waitForConnectChallenge(ws)
-  console.log(`[gateway-ws] Received connect challenge nonce: ${nonce.slice(0, 8)}...`)
-
-  // Send connect with the nonce
-  const connectId = randomUUID()
-  const connectParams = await buildConnectParams(token, password, nonce)
-  const connectReq: GatewayFrame = {
-    type: 'req',
-    id: connectId,
-    method: 'connect',
-    params: connectParams,
-  }
-  const waiter = createGatewayWaiter()
-  ws.addEventListener('message', waiter.handleMessage)
-  ws.send(JSON.stringify(connectReq))
-  await waiter.waitForRes(connectId)
-  ws.removeEventListener('message', waiter.handleMessage)
-}
-
-function createGatewayClient(): GatewayClient {
-  const { url, token, password } = getGatewayConfig()
-  const ws = new WebSocket(url)
-  let closed = false
-  let connected = false
-  let onEvent: ((event: GatewayEventFrame) => void) | undefined
-  let onError: ((error: Error) => void) | undefined
-  const waiters = new Map<
-    string,
-    {
-      resolve: (v: unknown) => void
-      reject: (e: Error) => void
-    }
-  >()
-
-  function rejectAll(error: Error) {
-    for (const [, waiter] of waiters) {
-      waiter.reject(error)
-    }
-    waiters.clear()
-  }
-
-  function handleMessage(evt: MessageEvent) {
-    try {
-      const data = typeof evt.data === 'string' ? evt.data : ''
-      const parsed = JSON.parse(data) as GatewayFrame
-      if (parsed.type === 'event') {
-        if (onEvent) onEvent(parsed)
-        return
-      }
-      if (parsed.type !== 'res') return
-      const waiter = waiters.get(parsed.id)
-      if (!waiter) return
-      waiters.delete(parsed.id)
-      if (parsed.ok) waiter.resolve(parsed.payload)
-      else waiter.reject(new Error(parsed.error?.message ?? 'gateway error'))
-    } catch {
-      // ignore parse errors
-    }
-  }
-
-  function handleError(err: Event) {
-    if (onError) {
-      onError(
-        new Error(
-          `Gateway client error: ${String((err as any)?.message ?? err)}`,
-        ),
-      )
-    }
-  }
-
-  function handleClose(evt?: { code?: number; reason?: string }) {
-    if (closed) return
-    closed = true
-    if (evt?.code === 1008) {
-      reportPairingRequired(
-        typeof evt.reason === 'string' ? evt.reason : undefined,
-      )
-    }
-    rejectAll(new Error('Gateway client closed'))
-  }
-
-  ws.addEventListener('message', handleMessage)
-  ws.addEventListener('error', handleError)
-  ws.addEventListener('close', handleClose)
-
-  async function connect() {
-    if (connected || closed) return
-    await wsOpen(ws)
-
-    // Wait for the connect.challenge event containing the nonce
-    const nonce = await waitForConnectChallenge(ws)
-    console.log(`[gateway-ws] Received connect challenge nonce: ${nonce.slice(0, 8)}...`)
-
-    // Send connect with the nonce
-    const connectId = randomUUID()
-    const connectParams = await buildConnectParams(token, password, nonce)
-    const connectReq: GatewayFrame = {
-      type: 'req',
-      id: connectId,
-      method: 'connect',
-      params: connectParams,
-    }
-    const waitForRes = new Promise<unknown>((resolve, reject) => {
-      waiters.set(connectId, { resolve, reject })
-    })
-    ws.send(JSON.stringify(connectReq))
-    await waitForRes
-    connected = true
-  }
-
-  function sendReq<TPayload = unknown>(method: string, params?: unknown) {
-    if (closed) {
-      return Promise.reject(new Error('Gateway client closed'))
-    }
-    const id = randomUUID()
-    const req: GatewayFrame = {
-      type: 'req',
-      id,
-      method,
-      params,
-    }
-    const waitForRes = new Promise<unknown>((resolve, reject) => {
-      waiters.set(id, { resolve, reject })
-    })
-    ws.send(JSON.stringify(req))
-    return waitForRes as Promise<TPayload>
-  }
-
-  function close() {
-    if (closed) return
-    closed = true
-    ws.removeEventListener('message', handleMessage)
-    ws.removeEventListener('error', handleError)
-    ws.removeEventListener('close', handleClose)
-    rejectAll(new Error('Gateway client closed'))
-    void wsClose(ws)
-  }
-
-  function setOnEvent(handler?: (event: GatewayEventFrame) => void) {
-    onEvent = handler
-  }
-
-  function setOnError(handler?: (error: Error) => void) {
-    onError = handler
-  }
-
-  function isClosed() {
-    return closed
-  }
-
-  return { connect, sendReq, close, setOnEvent, setOnError, isClosed }
-}
-
-export async function acquireGatewayClient(
-  key: string,
-  options?: {
-    onEvent?: (event: GatewayEventFrame) => void
-    onError?: (error: Error) => void
-  },
-): Promise<GatewayClientHandle> {
-  const existing = sharedGatewayClients.get(key)
-  if (existing && !existing.client.isClosed()) {
-    existing.refs += 1
-    if (options?.onEvent) existing.client.setOnEvent(options.onEvent)
-    if (options?.onError) existing.client.setOnError(options.onError)
-    return {
-      client: existing.client,
-      release: function release() {
-        releaseGatewayClient(key)
-      },
-    }
-  }
-
-  const client = createGatewayClient()
-  if (options?.onEvent) client.setOnEvent(options.onEvent)
-  if (options?.onError) client.setOnError(options.onError)
-  await client.connect()
-  sharedGatewayClients.set(key, { key, refs: 1, client })
+  limit?: number
+}) {
+  const key = input.sessionKey || input.friendlyId || 'main'
+  const session = ensureSession(key)
+  const limit =
+    typeof input.limit === 'number' && Number.isFinite(input.limit)
+      ? input.limit
+      : 200
   return {
-    client,
-    release: function release() {
-      releaseGatewayClient(key)
-    },
+    sessionKey: session.key,
+    sessionId: session.key,
+    messages: session.messages.slice(-limit),
   }
 }
 
-function releaseGatewayClient(key: string) {
-  const entry = sharedGatewayClients.get(key)
-  if (!entry) return
-  entry.refs -= 1
-  if (entry.refs > 0) return
-  entry.client.close()
-  sharedGatewayClients.delete(key)
+export async function listCodexSessions() {
+  const store = readStore()
+  return {
+    sessions: store.sessions
+      .map(normalizeSession)
+      .sort((a, b) => b.updatedAt - a.updatedAt),
+  }
 }
 
-export async function gatewayRpcShared<TPayload = unknown>(
-  method: string,
-  params: unknown,
-  key?: string,
-): Promise<TPayload> {
-  if (key) {
-    const entry = sharedGatewayClients.get(key)
-    if (entry && !entry.client.isClosed()) {
-      await entry.client.connect()
-      return entry.client.sendReq<TPayload>(method, params)
-    }
+export async function patchCodexSession(input: {
+  key?: string
+  label?: string
+}) {
+  const session = ensureSession(input.key || randomUUID(), input.label)
+  return {
+    ok: true,
+    key: session.key,
+    entry: normalizeSession(session),
   }
-  return gatewayRpc<TPayload>(method, params)
 }
 
-export function gatewayEventStream({
-  sessionKey,
-  friendlyId,
-  signal,
-  onEvent,
-  onError,
-}: GatewayEventStreamOptions) {
-  const { url } = getGatewayConfig()
-  const ws = new WebSocket(url)
-  let closed = false
-
-  function handleMessage(evt: MessageEvent) {
-    try {
-      const data = typeof evt.data === 'string' ? evt.data : ''
-      const parsed = JSON.parse(data) as GatewayFrame
-      if (parsed.type !== 'event') return
-      onEvent(parsed)
-    } catch {
-      // ignore parse errors
-    }
+export async function resolveCodexSession(key: string) {
+  const store = readStore()
+  const session = findSession(store, key)
+  return {
+    ok: Boolean(session),
+    key: session?.key,
   }
-
-  function handleError(err: Event) {
-    if (onError) {
-      onError(
-        new Error(
-          `Gateway event stream error: ${String((err as any)?.message ?? err)}`,
-        ),
-      )
-    }
-  }
-
-  function handleClose(evt?: { code?: number; reason?: string }) {
-    if (closed) return
-    closed = true
-    if (evt?.code === 1008) {
-      reportPairingRequired(
-        typeof evt.reason === 'string' ? evt.reason : undefined,
-      )
-    }
-  }
-
-  ws.addEventListener('message', handleMessage)
-  ws.addEventListener('error', handleError)
-  ws.addEventListener('close', handleClose)
-
-  void connectGateway(ws)
-    .then(async () => {
-      if (!sessionKey && !friendlyId) return
-      const subscribeReq: GatewayFrame = {
-        type: 'req',
-        id: randomUUID(),
-        method: 'chat.subscribe',
-        params: {
-          sessionKey: sessionKey || undefined,
-          friendlyId: friendlyId || undefined,
-        },
-      }
-      const waiter = createGatewayWaiter()
-      ws.addEventListener('message', waiter.handleMessage)
-      try {
-        ws.send(JSON.stringify(subscribeReq))
-        await waiter.waitForRes(subscribeReq.id)
-      } catch (err) {
-        if (onError) {
-          onError(err instanceof Error ? err : new Error(String(err)))
-        }
-        close()
-      } finally {
-        ws.removeEventListener('message', waiter.handleMessage)
-      }
-    })
-    .catch((err) => {
-      if (onError) onError(err instanceof Error ? err : new Error(String(err)))
-    })
-
-  if (signal) {
-    signal.addEventListener(
-      'abort',
-      () => {
-        close()
-      },
-      { once: true },
-    )
-  }
-
-  function close() {
-    if (closed) return
-    closed = true
-    ws.removeEventListener('message', handleMessage)
-    ws.removeEventListener('error', handleError)
-    ws.removeEventListener('close', handleClose)
-    void wsClose(ws)
-  }
-
-  return close
 }
 
-function createGatewayWaiter(): GatewayWaiter {
-  const waiters = new Map<
-    string,
+export async function deleteCodexSession(key: string) {
+  const store = readStore()
+  const index = store.sessions.findIndex(
+    (session) => session.key === key || session.friendlyId === key,
+  )
+  if (index >= 0) {
+    store.sessions.splice(index, 1)
+    writeStore(store)
+  }
+  return { ok: true, sessionKey: key }
+}
+
+export async function codexCliCheck() {
+  const command = getCodexCommand()
+  const result = spawnSync(
+    process.platform === 'win32' ? `${command} --version` : command,
+    process.platform === 'win32' ? [] : ['--version'],
     {
-      resolve: (v: unknown) => void
-      reject: (e: Error) => void
-    }
-  >()
+      cwd: getCodexWorkdir(),
+      env: process.env,
+      stdio: 'pipe',
+      shell: process.platform === 'win32',
+      encoding: 'utf8',
+    },
+  )
 
-  function waitForRes(id: string) {
-    return new Promise<unknown>((resolve, reject) => {
-      waiters.set(id, { resolve, reject })
-    })
+  if (result.status === 0) {
+    return { ok: true }
   }
 
-  function handleMessage(evt: MessageEvent) {
-    try {
-      const data = typeof evt.data === 'string' ? evt.data : ''
-      const parsed = JSON.parse(data) as GatewayFrame
-      if (parsed.type !== 'res') return
-      const w = waiters.get(parsed.id)
-      if (!w) return
-      waiters.delete(parsed.id)
-      if (parsed.ok) w.resolve(parsed.payload)
-      else w.reject(new Error(parsed.error?.message ?? 'gateway error'))
-    } catch {
-      // ignore parse errors
-    }
-  }
-
-  return { waitForRes, handleMessage }
+  const detail = result.stderr || result.stdout || result.error?.message || ''
+  throw new Error(
+    detail.trim() ||
+      `Codex CLI command failed. Set CODEX_CLI_COMMAND if ${command} is not correct.`,
+  )
 }
 
-async function wsOpen(ws: WebSocket): Promise<void> {
-  if (ws.readyState === ws.OPEN) return
-  await new Promise<void>((resolve, reject) => {
-    const onOpen = () => {
-      cleanup()
-      resolve()
-    }
-    const onError = (e: Event) => {
-      cleanup()
-      reject(new Error(`WebSocket error: ${String((e as any)?.message ?? e)}`))
-    }
-    const cleanup = () => {
-      ws.removeEventListener('open', onOpen)
-      ws.removeEventListener('error', onError)
-    }
-    ws.addEventListener('open', onOpen)
-    ws.addEventListener('error', onError)
-  })
-}
-
-async function wsClose(ws: WebSocket): Promise<void> {
-  if (ws.readyState === ws.CLOSED || ws.readyState === ws.CLOSING) return
-  await new Promise<void>((resolve) => {
-    ws.addEventListener('close', () => resolve(), { once: true })
-    ws.close()
-  })
-}
-
-export async function gatewayRpc<TPayload = unknown>(
-  method: string,
-  params?: unknown,
-): Promise<TPayload> {
-  const { url, token, password } = getGatewayConfig()
-
-  const ws = new WebSocket(url)
-  try {
-    await wsOpen(ws)
-
-    // Wait for the connect.challenge event containing the nonce
-    const nonce = await waitForConnectChallenge(ws)
-
-    const waiter = createGatewayWaiter()
-    ws.addEventListener('message', waiter.handleMessage)
-
-    // 1) connect handshake with nonce
-    const connectId = randomUUID()
-    const connectParams = await buildConnectParams(token, password, nonce)
-    const connectReq: GatewayFrame = {
-      type: 'req',
-      id: connectId,
-      method: 'connect',
-      params: connectParams,
-    }
-
-    ws.send(JSON.stringify(connectReq))
-    await waiter.waitForRes(connectId)
-
-    // 2) send actual RPC request
-    const requestId = randomUUID()
-    const req: GatewayFrame = {
-      type: 'req',
-      id: requestId,
-      method,
-      params,
-    }
-
-    ws.send(JSON.stringify(req))
-    const payload = await waiter.waitForRes(requestId)
-
-    ws.removeEventListener('message', waiter.handleMessage)
-    return payload as TPayload
-  } finally {
-    try {
-      await wsClose(ws)
-    } catch {
-      // ignore
-    }
-  }
-}
-
-export async function gatewayConnectCheck(): Promise<void> {
-  const { url, token, password } = getGatewayConfig()
-
-  const ws = new WebSocket(url)
-  try {
-    await wsOpen(ws)
-
-    // Wait for the connect.challenge event containing the nonce
-    const nonce = await waitForConnectChallenge(ws)
-
-    const connectId = randomUUID()
-    const connectParams = await buildConnectParams(token, password, nonce)
-    const connectReq: GatewayFrame = {
-      type: 'req',
-      id: connectId,
-      method: 'connect',
-      params: connectParams,
-    }
-
-    const waiter = createGatewayWaiter()
-    ws.addEventListener('message', waiter.handleMessage)
-    ws.send(JSON.stringify(connectReq))
-    await waiter.waitForRes(connectId)
-    ws.removeEventListener('message', waiter.handleMessage)
-  } finally {
-    try {
-      await wsClose(ws)
-    } catch {
-      // ignore
-    }
-  }
-}
