@@ -240,3 +240,38 @@ export type McpHealthPayload = {
   servers: Array<McpServerHealth>
   setupSnippets: Array<McpSetupSnippet>
 }
+
+export type CodexTaskStatus =
+  | 'queued'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'canceled'
+
+export type CodexTaskEvent = {
+  status: CodexTaskStatus
+  at: number
+  note?: string
+}
+
+export type CodexTaskRecord = {
+  id: string
+  sessionKey: string
+  messageId: string
+  message: string
+  runProfile?: string
+  status: CodexTaskStatus
+  createdAt: number
+  updatedAt: number
+  startedAt?: number
+  finishedAt?: number
+  durationMs?: number
+  exitCode?: number | null
+  error?: string
+  retryOf?: string
+  events: Array<CodexTaskEvent>
+}
+
+export type TaskListResponse = {
+  tasks: Array<CodexTaskRecord>
+}

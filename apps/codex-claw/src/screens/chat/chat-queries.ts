@@ -9,6 +9,7 @@ import type {
   RepoContextSelection,
   SessionListResponse,
   SessionMeta,
+  TaskListResponse,
   WorkspaceListResponse,
   WorkspaceSummary,
 } from './types'
@@ -21,6 +22,7 @@ type GatewayStatusResponse = {
 export const chatQueryKeys = {
   sessions: ['chat', 'sessions'] as const,
   workspaces: ['chat', 'workspaces'] as const,
+  tasks: ['chat', 'tasks'] as const,
   history: function history(friendlyId: string, sessionKey: string) {
     return ['chat', 'history', friendlyId, sessionKey] as const
   },
@@ -139,6 +141,32 @@ export async function fetchMcpHealth(): Promise<McpHealthPayload> {
   const res = await fetch('/api/mcp-health')
   if (!res.ok) throw new Error(await readError(res))
   return (await res.json()) as McpHealthPayload
+}
+
+export async function fetchCodexTasks(): Promise<TaskListResponse> {
+  const res = await fetch('/api/tasks')
+  if (!res.ok) throw new Error(await readError(res))
+  return (await res.json()) as TaskListResponse
+}
+
+export async function cancelCodexTask(id: string): Promise<TaskListResponse> {
+  const res = await fetch('/api/tasks', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ action: 'cancel', id }),
+  })
+  if (!res.ok) throw new Error(await readError(res))
+  return fetchCodexTasks()
+}
+
+export async function retryCodexTask(id: string): Promise<TaskListResponse> {
+  const res = await fetch('/api/tasks', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ action: 'retry', id }),
+  })
+  if (!res.ok) throw new Error(await readError(res))
+  return fetchCodexTasks()
 }
 
 export async function stageGitReviewFiles(
