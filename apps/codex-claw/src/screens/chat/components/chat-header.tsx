@@ -1,6 +1,6 @@
 import { memo } from 'react'
 import { HugeiconsIcon } from '@hugeicons/react'
-import { Menu01Icon } from '@hugeicons/core-free-icons'
+import { GitBranchIcon, Menu01Icon } from '@hugeicons/core-free-icons'
 import { ContextMeter } from './context-meter'
 import { Button } from '@/components/ui/button'
 import { ExportMenu } from '@/components/export-menu'
@@ -17,6 +17,8 @@ type ChatHeaderProps = {
   onExport: (format: ExportFormat) => void
   exportDisabled?: boolean
   showExport?: boolean
+  gitReviewOpen?: boolean
+  onToggleGitReview?: () => void
 }
 
 function ChatHeaderComponent({
@@ -29,6 +31,8 @@ function ChatHeaderComponent({
   onExport,
   exportDisabled = false,
   showExport = true,
+  gitReviewOpen = false,
+  onToggleGitReview,
 }: ChatHeaderProps) {
   return (
     <div
@@ -50,6 +54,17 @@ function ChatHeaderComponent({
         {activeTitle}
       </div>
       <div className="flex items-center gap-2 shrink-0">
+        {onToggleGitReview ? (
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            onClick={onToggleGitReview}
+            className={gitReviewOpen ? 'bg-primary-100' : undefined}
+            aria-label="Review local changes"
+          >
+            <HugeiconsIcon icon={GitBranchIcon} size={18} strokeWidth={1.5} />
+          </Button>
+        ) : null}
         {showExport ? (
           <ExportMenu onExport={onExport} disabled={exportDisabled} />
         ) : null}
