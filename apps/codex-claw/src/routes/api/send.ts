@@ -7,6 +7,10 @@ import {
   resolveCodexSession,
   sendCodexPrompt,
 } from '../../server/codex-cli'
+import {
+  buildContextAttachmentPrompt,
+  parseContextAttachments,
+} from '../../server/context-attachments'
 import { buildRepositoryContextPrompt } from '../../server/repo-context'
 import type { RepoContextSelection } from '../../server/repo-context'
 
@@ -141,10 +145,25 @@ export const Route = createFileRoute('/api/send')({
           const contextSelections = parseContextSelections(
             body.contextSelections,
           )
-          const contextBlock =
+          const parsedContextAttachments = parseContextAttachments(
+            body.contextAttachments,
+          )
+          if (!parsedContextAttachments.ok) {
+            return json(
+              { ok: false, error: parsedContextAttachments.error },
+              { status: 400 },
+            )
+          }
+          const repositoryContextBlock =
             contextSelections.length > 0
               ? buildRepositoryContextPrompt(contextSelections)
               : undefined
+          const attachmentContextBlock = buildContextAttachmentPrompt(
+            parsedContextAttachments.attachments,
+          )
+          const contextBlock = [repositoryContextBlock, attachmentContextBlock]
+            .filter(Boolean)
+            .join('\n\n')
 
           if (
             !message.trim() &&

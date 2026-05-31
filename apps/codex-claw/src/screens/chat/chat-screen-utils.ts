@@ -1,4 +1,8 @@
-import type { GatewayMessage, RepoContextSelection } from './types'
+import type {
+  ContextAttachment,
+  GatewayMessage,
+  RepoContextSelection,
+} from './types'
 import type { AttachmentFile } from '@/components/attachment-button'
 import { randomUUID } from '@/lib/utils'
 
@@ -12,6 +16,7 @@ export function createOptimisticMessage(
   body: string,
   attachments?: Array<AttachmentFile>,
   contextSelections?: Array<RepoContextSelection>,
+  contextAttachments?: Array<ContextAttachment>,
 ): OptimisticMessagePayload {
   const clientId = randomUUID()
   const optimisticId = `opt-${clientId}`
@@ -40,13 +45,24 @@ export function createOptimisticMessage(
 
   if (body.trim()) {
     content.push({ type: 'text', text: body })
-  } else if (contextSelections && contextSelections.length > 0) {
-    content.push({
-      type: 'text',
-      text:
+  } else if (
+    (contextSelections && contextSelections.length > 0) ||
+    (contextAttachments && contextAttachments.length > 0)
+  ) {
+    const labels: Array<string> = []
+    if (contextSelections && contextSelections.length > 0) {
+      labels.push(
         'Repository context: ' +
-        contextSelections.map((selection) => selection.path).join(', '),
-    })
+          contextSelections.map((selection) => selection.path).join(', '),
+      )
+    }
+    if (contextAttachments && contextAttachments.length > 0) {
+      labels.push(
+        'Context attachments: ' +
+          contextAttachments.map((attachment) => attachment.title).join(', '),
+      )
+    }
+    content.push({ type: 'text', text: labels.join('\n') })
   } else if (attachments && attachments.length > 0) {
     content.push({ type: 'text', text: '' })
   }

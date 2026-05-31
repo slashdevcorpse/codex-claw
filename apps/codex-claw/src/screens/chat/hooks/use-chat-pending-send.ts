@@ -9,6 +9,7 @@ import type { QueryClient } from '@tanstack/react-query'
 
 import type { AttachmentFile } from '@/components/attachment-button'
 import type {
+  ContextAttachment,
   HistoryResponse,
   RepoContextSelection,
   RunProfileId,
@@ -30,6 +31,7 @@ type UseChatPendingSendInput = {
     skipOptimistic: boolean,
     attachments?: Array<AttachmentFile>,
     contextSelections?: Array<RepoContextSelection>,
+    contextAttachments?: Array<ContextAttachment>,
     runProfile?: RunProfileId,
     confirmedRisk?: boolean,
   ) => void
@@ -106,6 +108,7 @@ export function useChatPendingSend({
       true,
       pending.attachments,
       pending.contextSelections,
+      pending.contextAttachments,
       pending.runProfile,
       pending.confirmedRisk,
     )
