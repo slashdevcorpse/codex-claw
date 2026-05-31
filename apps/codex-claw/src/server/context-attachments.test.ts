@@ -17,7 +17,7 @@ describe('context attachments', function () {
     const fetcher = function fetchPreview() {
       return Promise.resolve(
         new Response(
-          '<html><head><title>Bug report</title></head><body><h1>Issue</h1><p>Expected behavior</p><script>ignored()</script></body></html>',
+          '<html><head><title>Bug report</title></head><body><h1>Issue</h1><p>Expected behavior</p><script >ignored()</script ></body></html>',
           {
             headers: {
               'content-type': 'text/html; charset=utf-8',
