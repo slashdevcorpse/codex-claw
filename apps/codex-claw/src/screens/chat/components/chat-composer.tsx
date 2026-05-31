@@ -7,8 +7,17 @@ import {
   RepoContextPanel,
   RepoContextSummary,
 } from './repo-context-picker'
+import {
+  ContextAttachmentButton,
+  ContextAttachmentPanel,
+  ContextAttachmentSummary,
+} from './context-attachment-picker'
 import type { Ref } from 'react'
-import type { RepoContextSelection, RunProfileId } from '../types'
+import type {
+  ContextAttachment,
+  RepoContextSelection,
+  RunProfileId,
+} from '../types'
 
 import type { AttachmentFile } from '@/components/attachment-button'
 import {
@@ -35,6 +44,7 @@ type ChatComposerHelpers = {
   setValue: (value: string) => void
   attachments?: Array<AttachmentFile>
   contextSelections?: Array<RepoContextSelection>
+  contextAttachments?: Array<ContextAttachment>
   runProfile?: RunProfileId
   confirmedRisk?: boolean
 }
@@ -74,6 +84,10 @@ function ChatComposerComponent({
   const [contextSelections, setContextSelections] = useState<
     Array<RepoContextSelection>
   >([])
+  const [contextAttachmentOpen, setContextAttachmentOpen] = useState(false)
+  const [contextAttachments, setContextAttachments] = useState<
+    Array<ContextAttachment>
+  >([])
   const [runProfile, setRunProfile] =
     useState<RunProfileId>('read-only-inspect')
   const [confirmedRisk, setConfirmedRisk] = useState(false)
@@ -101,6 +115,8 @@ function ChatComposerComponent({
     })
     setContextSelections([])
     setContextOpen(false)
+    setContextAttachments([])
+    setContextAttachmentOpen(false)
     setConfirmedRisk(false)
     focusPrompt()
   }, [focusPrompt])
@@ -141,6 +157,11 @@ function ChatComposerComponent({
       prev.filter((selection) => selection.path !== path),
     )
   }, [])
+  const handleRemoveContextAttachment = useCallback((id: string) => {
+    setContextAttachments((prev) =>
+      prev.filter((attachment) => attachment.id !== id),
+    )
+  }, [])
   const activeRunProfile = useMemo(() => {
     return (
       runProfiles.find((profile) => profile.id === runProfile) ?? runProfiles[0]
@@ -175,12 +196,13 @@ function ChatComposerComponent({
   const handleSubmit = useCallback(() => {
     if (disabled) return
     const body = valueRef.current.trim()
-    // Allow submit if there is text, an image, or selected repo context.
+    // Allow submit if there is text, an image, or selected context.
     const validAttachments = attachments.filter((a) => !a.error && a.base64)
     if (
       body.length === 0 &&
       validAttachments.length === 0 &&
-      contextSelections.length === 0
+      contextSelections.length === 0 &&
+      contextAttachments.length === 0
     )
       return
     if (activeRunProfile.requiresConfirmation && !confirmedRisk) return
@@ -189,6 +211,7 @@ function ChatComposerComponent({
       setValue: setComposerValue,
       attachments: validAttachments,
       contextSelections,
+      contextAttachments,
       runProfile,
       confirmedRisk,
     })
@@ -201,6 +224,7 @@ function ChatComposerComponent({
     setComposerValue,
     attachments,
     contextSelections,
+    contextAttachments,
     runProfile,
     confirmedRisk,
     activeRunProfile.requiresConfirmation,
@@ -229,10 +253,19 @@ function ChatComposerComponent({
             selections={contextSelections}
             onRemove={handleRemoveContext}
           />
+          <ContextAttachmentSummary
+            attachments={contextAttachments}
+            onRemove={handleRemoveContextAttachment}
+          />
           <RepoContextPanel
             open={contextOpen}
             selections={contextSelections}
             onSelectionsChange={setContextSelections}
+          />
+          <ContextAttachmentPanel
+            open={contextAttachmentOpen}
+            attachments={contextAttachments}
+            onAttachmentsChange={setContextAttachments}
           />
           <PromptInputTextarea
             placeholder="Type a message…"
@@ -287,6 +320,22 @@ function ChatComposerComponent({
                   <RepoContextButton
                     open={contextOpen}
                     onToggle={() => setContextOpen((current) => !current)}
+                    disabled={disabled}
+                    buttonProps={{
+                      ...triggerProps,
+                      className: cn('rounded-full', triggerProps.className),
+                    }}
+                  />
+                )}
+              />
+              <PromptInputAction
+                tooltip="Attach URL or document context"
+                render={(triggerProps) => (
+                  <ContextAttachmentButton
+                    open={contextAttachmentOpen}
+                    onToggle={() =>
+                      setContextAttachmentOpen((current) => !current)
+                    }
                     disabled={disabled}
                     buttonProps={{
                       ...triggerProps,

@@ -1,4 +1,5 @@
 import type {
+  ContextAttachment,
   GatewayMessage,
   RepoContextSelection,
   RunProfileId,
@@ -12,6 +13,7 @@ export type PendingSendPayload = {
   optimisticMessage: GatewayMessage
   attachments?: Array<AttachmentFile>
   contextSelections?: Array<RepoContextSelection>
+  contextAttachments?: Array<ContextAttachment>
   runProfile?: RunProfileId
   confirmedRisk?: boolean
 }

@@ -189,6 +189,32 @@ export type RepoContextPayload = {
   estimate: RepoContextEstimate
 }
 
+export type ContextAttachmentKind = 'url' | 'document'
+
+export type ContextAttachment = {
+  id: string
+  kind: ContextAttachmentKind
+  title: string
+  source: string
+  mimeType: string
+  sizeBytes: number
+  estimatedTokens: number
+  text: string
+  truncated: boolean
+}
+
+export type ContextAttachmentPreviewInput =
+  | {
+      kind: 'url'
+      url: string
+    }
+  | {
+      kind: 'document'
+      name: string
+      mimeType: string
+      content: string
+    }
+
 export type GitFileState = 'staged' | 'unstaged' | 'untracked' | 'deleted'
 
 export type GitReviewFile = {

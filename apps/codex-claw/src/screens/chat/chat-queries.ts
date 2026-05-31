@@ -2,6 +2,8 @@ import { getMessageTimestamp, normalizeSessions, readError } from './utils'
 import type { QueryClient } from '@tanstack/react-query'
 import type {
   ArtifactListResponse,
+  ContextAttachment,
+  ContextAttachmentPreviewInput,
   GatewayMessage,
   GitReviewPayload,
   HistoryResponse,
@@ -208,6 +210,18 @@ export async function fetchRepoContext(
   const res = await fetch('/api/repo-context' + suffix)
   if (!res.ok) throw new Error(await readError(res))
   return (await res.json()) as RepoContextPayload
+}
+
+export async function previewContextAttachment(
+  input: ContextAttachmentPreviewInput,
+): Promise<ContextAttachment> {
+  const res = await fetch('/api/context-preview', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(input),
+  })
+  if (!res.ok) throw new Error(await readError(res))
+  return (await res.json()) as ContextAttachment
 }
 
 export async function fetchGitReview(): Promise<GitReviewPayload> {
