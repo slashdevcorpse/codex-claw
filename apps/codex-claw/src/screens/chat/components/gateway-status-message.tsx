@@ -15,10 +15,10 @@ export function GatewayStatusMessage({
 }: GatewayStatusMessageProps) {
   const isChecking = state === 'checking'
   const title = isChecking
-    ? 'Checking gateway connection...'
-    : 'OpenClaw gateway is unreachable'
+    ? 'Checking Codex CLI...'
+    : 'Codex CLI is unreachable'
   const description = isChecking
-    ? 'This dashboard needs access to the OpenClaw gateway configured by your server environment variables.'
+    ? 'This dashboard needs access to the local Codex CLI command configured by your server environment variables.'
     : ''
   return (
     <MessageStatus
@@ -28,11 +28,9 @@ export function GatewayStatusMessage({
           description
         ) : (
           <>
-            We could not reach the gateway from the dashboard server. Start the
-            gateway and confirm your server environment has{' '}
-            <span className="font-mono">CLAWDBOT_GATEWAY_URL</span> plus{' '}
-            <span className="font-mono">CLAWDBOT_GATEWAY_TOKEN</span> (or{' '}
-            <span className="font-mono">CLAWDBOT_GATEWAY_PASSWORD</span>).
+            We could not run Codex CLI from the dashboard server. Confirm{' '}
+            <span className="font-mono">CODEX_CLI_COMMAND</span> resolves and
+            that Codex CLI is logged in on this machine.
           </>
         )
       }

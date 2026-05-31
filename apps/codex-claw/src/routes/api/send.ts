@@ -1,12 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { createFileRoute } from '@tanstack/react-router'
 import { json } from '@tanstack/react-start'
-import { gatewayRpc, gatewayRpcShared } from '../../server/gateway'
-
-type SessionsResolveResponse = {
-  ok?: boolean
-  key?: string
-}
+import { resolveCodexSession, sendCodexPrompt } from '../../server/codex-cli'
 
 export const Route = createFileRoute('/api/send')({
   server: {
@@ -47,14 +42,7 @@ export const Route = createFileRoute('/api/send')({
           let sessionKey = rawSessionKey.length > 0 ? rawSessionKey : ''
 
           if (!sessionKey && friendlyId) {
-            const resolved = await gatewayRpc<SessionsResolveResponse>(
-              'sessions.resolve',
-              {
-                key: friendlyId,
-                includeUnknown: true,
-                includeGlobal: true,
-              },
-            )
+            const resolved = await resolveCodexSession(friendlyId)
             const resolvedKey =
               typeof resolved.key === 'string' ? resolved.key.trim() : ''
             if (resolvedKey.length === 0) {
@@ -70,22 +58,16 @@ export const Route = createFileRoute('/api/send')({
             sessionKey = 'main'
           }
 
-          const res = await gatewayRpcShared<{ runId: string }>(
-            'chat.send',
-            {
-              sessionKey,
-              message,
-              thinking,
-              attachments,
-              deliver: true,
-              timeoutMs: 120_000,
-              idempotencyKey:
-                typeof body.idempotencyKey === 'string'
-                  ? body.idempotencyKey
-                  : randomUUID(),
-            },
+          const res = await sendCodexPrompt({
             sessionKey,
-          )
+            message,
+            thinking,
+            attachments,
+            idempotencyKey:
+              typeof body.idempotencyKey === 'string'
+                ? body.idempotencyKey
+                : randomUUID(),
+          })
 
           return json({ ok: true, ...res, sessionKey })
         } catch (err) {

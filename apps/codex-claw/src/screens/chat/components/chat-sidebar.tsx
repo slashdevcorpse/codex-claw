@@ -26,7 +26,7 @@ import {
 } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { Button, buttonVariants } from '@/components/ui/button'
-import { WebClawIconBig } from '@/components/icons/webclaw-big'
+import { CodexClawIconBig } from '@/components/icons/codex-claw-big'
 
 type ChatSidebarProps = {
   sessions: Array<SessionMeta>
@@ -169,8 +169,8 @@ function ChatSidebarComponent({
                   'w-full pl-1.5 justify-start',
                 )}
               >
-                <WebClawIconBig className="size-5 rounded-sm" />
-                WebClaw
+                <CodexClawIconBig className="size-5 rounded-sm" />
+                CodexClaw
               </Link>
             </motion.div>
           ) : null}

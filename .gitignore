@@ -11,4 +11,5 @@ count.txt
 .output
 .vinxi
 todos.json
-apps/webclaw/.device-keys.json
+.codex-claw/
+apps/codex-claw/.codex-claw/

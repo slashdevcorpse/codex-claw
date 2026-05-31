@@ -216,8 +216,8 @@ type ImagePart = {
 }
 
 /**
- * Extracts image attachments from a gateway message.
- * @param msg - The gateway message to extract images from
+ * Extracts image attachments from a chat message.
+ * @param msg - The chat message to extract images from
  * @returns Array of image parts with base64 data
  */
 function imagesFromMessage(msg: GatewayMessage): Array<ImagePart> {
