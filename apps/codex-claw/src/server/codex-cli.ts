@@ -1112,20 +1112,16 @@ function findWorkspace(store: WorkspaceStore, id: string) {
 }
 
 function quoteCommandArg(value: string) {
-  return `"${value.replace(/"/g, '\\"')}"`
+  return JSON.stringify(value)
 }
 
 function runTool(command: string, args: Array<string>, cwd: string) {
   const resolvedCommand = resolveCodexCommand(command)
   if (process.platform === 'win32' && /\.(cmd|bat)$/i.test(resolvedCommand)) {
-    const shellCommand = [resolvedCommand, ...args]
-      .map(quoteCommandArg)
-      .join(' ')
-    return spawnSync(shellCommand, {
+    return spawnSync('cmd.exe', ['/d', '/s', '/c', resolvedCommand, ...args], {
       cwd,
       env: process.env,
       stdio: 'pipe',
-      shell: true,
       encoding: 'utf8',
     })
   }
