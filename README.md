@@ -210,11 +210,11 @@ The browser talks to local server routes in <code>apps/codex-claw</code>. Those 
 
 CodexClaw can move from alpha toward beta when these workflows are reliable:
 
-- Progressive Codex CLI streaming
-- Image attachment pass-through to Codex CLI
-- npm alpha publish through <code>npx codex-claw@alpha</code>
-- release checklist for package contents, smoke tests, and docs
-- CI coverage for app build, tests, lint, and package dry run
+- completed beta backlog features are merged and mapped in [docs/BETA_WORKFLOW.md](docs/BETA_WORKFLOW.md)
+- npm alpha publish works through <code>npx codex-claw@alpha</code>
+- package dry run, packed smoke test, npm smoke test, app lint, app tests, and app build all pass
+- release package tarball and SHA256 checksums are attached to a GitHub release
+- redacted session bundle evidence is captured before public release notes are posted
 
 ## Project Layout
 
