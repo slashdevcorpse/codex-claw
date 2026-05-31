@@ -202,3 +202,41 @@ export type GitReviewPayload = {
   patch: string
   draftCommitMessage: string
 }
+
+export type McpHealthStatus = 'ok' | 'warning' | 'error'
+
+export type McpEnvRequirement = {
+  name: string
+  status: McpHealthStatus
+  source: 'config' | 'process' | 'missing'
+  reference?: string
+}
+
+export type McpServerHealth = {
+  name: string
+  enabled: boolean
+  command: string
+  args: Array<string>
+  env: Array<McpEnvRequirement>
+  status: McpHealthStatus
+  summary: string
+  commandPath?: string
+}
+
+export type McpSetupSnippet = {
+  id: string
+  label: string
+  description: string
+  snippet: string
+}
+
+export type McpHealthPayload = {
+  ok: boolean
+  workspaceId: string
+  workdir: string
+  configPath?: string
+  checkedConfigPaths: Array<string>
+  checkedAt: number
+  servers: Array<McpServerHealth>
+  setupSnippets: Array<McpSetupSnippet>
+}

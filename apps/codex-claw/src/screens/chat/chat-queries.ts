@@ -4,6 +4,7 @@ import type {
   GatewayMessage,
   GitReviewPayload,
   HistoryResponse,
+  McpHealthPayload,
   RepoContextPayload,
   RepoContextSelection,
   SessionListResponse,
@@ -132,6 +133,12 @@ export async function fetchGitReview(): Promise<GitReviewPayload> {
   const res = await fetch('/api/git-review')
   if (!res.ok) throw new Error(await readError(res))
   return (await res.json()) as GitReviewPayload
+}
+
+export async function fetchMcpHealth(): Promise<McpHealthPayload> {
+  const res = await fetch('/api/mcp-health')
+  if (!res.ok) throw new Error(await readError(res))
+  return (await res.json()) as McpHealthPayload
 }
 
 export async function stageGitReviewFiles(
