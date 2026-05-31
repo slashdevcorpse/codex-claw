@@ -66,6 +66,54 @@ type SessionStore = {
   sessions: Array<SessionRecord>
 }
 
+type CodexTaskStatus =
+  | 'queued'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'canceled'
+
+type CodexTaskEvent = {
+  status: CodexTaskStatus
+  at: number
+  note?: string
+}
+
+type CodexTaskSnapshot = {
+  sessionKey: string
+  message: string
+  thinking?: string
+  attachments?: Array<AttachmentInput>
+  contextBlock?: string
+  runProfile?: string
+  confirmedRisk?: boolean
+}
+
+type CodexTaskRecord = {
+  id: string
+  sessionKey: string
+  messageId: string
+  prompt: string
+  message: string
+  runProfile?: string
+  status: CodexTaskStatus
+  createdAt: number
+  updatedAt: number
+  startedAt?: number
+  finishedAt?: number
+  durationMs?: number
+  exitCode?: number | null
+  error?: string
+  retryOf?: string
+  snapshot: CodexTaskSnapshot
+  events: Array<CodexTaskEvent>
+}
+
+type TaskStore = {
+  version: 1
+  tasks: Array<CodexTaskRecord>
+}
+
 type AttachmentInput = {
   mimeType: string
   content: string
@@ -80,6 +128,7 @@ type SendCodexPromptInput = {
   contextBlock?: string
   runProfile?: string
   confirmedRisk?: boolean
+  retryOf?: string
   idempotencyKey?: string
 }
 
@@ -252,7 +301,9 @@ const runProfiles: Record<
 }
 let storeCache: SessionStore | null = null
 let workspaceStoreCache: WorkspaceStore | null = null
+let taskStoreCache: TaskStore | null = null
 let stateVersion = 0
+const runningTasks = new Map<string, ReturnType<typeof spawn>>()
 
 function getBaseStateDir() {
   const configured = process.env.CODEX_CLAW_STATE_DIR?.trim()
@@ -270,6 +321,10 @@ function getStateDir() {
 
 function getStorePath() {
   return path.join(getStateDir(), 'sessions.json')
+}
+
+function getTaskStorePath() {
+  return path.join(getStateDir(), 'tasks.json')
 }
 
 function getCodexCommand() {
@@ -570,6 +625,174 @@ function writeStore(store: SessionStore) {
   renameSync(tempPath, storePath)
   storeCache = store
   stateVersion += 1
+}
+
+function isTaskRecord(value: unknown): value is CodexTaskRecord {
+  if (!value || typeof value !== 'object') return false
+  const candidate = value as Record<string, unknown>
+  return (
+    typeof candidate.id === 'string' &&
+    typeof candidate.sessionKey === 'string' &&
+    typeof candidate.messageId === 'string' &&
+    typeof candidate.prompt === 'string' &&
+    typeof candidate.message === 'string' &&
+    typeof candidate.status === 'string' &&
+    typeof candidate.createdAt === 'number' &&
+    typeof candidate.updatedAt === 'number' &&
+    candidate.snapshot !== null &&
+    typeof candidate.snapshot === 'object' &&
+    Array.isArray(candidate.events)
+  )
+}
+
+function isTaskStore(value: unknown): value is TaskStore {
+  if (!value || typeof value !== 'object') return false
+  const candidate = value as Record<string, unknown>
+  return candidate.version === 1 && Array.isArray(candidate.tasks)
+}
+
+function normalizeTaskStatus(value: string): CodexTaskStatus {
+  if (
+    value === 'queued' ||
+    value === 'running' ||
+    value === 'completed' ||
+    value === 'failed' ||
+    value === 'canceled'
+  ) {
+    return value
+  }
+  return 'failed'
+}
+
+function normalizeTaskRecord(value: CodexTaskRecord): CodexTaskRecord {
+  const status = normalizeTaskStatus(value.status)
+  return {
+    ...value,
+    status,
+    events: value.events
+      .filter((event) => typeof event.at === 'number')
+      .map((event) => ({
+        status: normalizeTaskStatus(event.status),
+        at: event.at,
+        note: typeof event.note === 'string' ? event.note : undefined,
+      })),
+  }
+}
+
+function normalizeTaskStore(value: unknown): TaskStore {
+  if (!isTaskStore(value)) {
+    return {
+      version: 1,
+      tasks: [],
+    }
+  }
+  return {
+    version: 1,
+    tasks: value.tasks.filter(isTaskRecord).map(normalizeTaskRecord),
+  }
+}
+
+function readTaskStore() {
+  if (taskStoreCache) return taskStoreCache
+  const taskStorePath = getTaskStorePath()
+  try {
+    const parsed = JSON.parse(readFileSync(taskStorePath, 'utf8')) as unknown
+    taskStoreCache = normalizeTaskStore(parsed)
+  } catch {
+    taskStoreCache = { version: 1, tasks: [] }
+  }
+  return taskStoreCache
+}
+
+function writeTaskStore(store: TaskStore) {
+  const taskStorePath = getTaskStorePath()
+  mkdirSync(path.dirname(taskStorePath), { recursive: true })
+  const tempPath = taskStorePath + '.' + process.pid + '.' + Date.now() + '.tmp'
+  writeFileSync(tempPath, JSON.stringify(store, null, 2))
+  renameSync(tempPath, taskStorePath)
+  taskStoreCache = store
+  stateVersion += 1
+}
+
+function taskDuration(task: CodexTaskRecord, now = Date.now()) {
+  const startedAt = task.startedAt ?? task.createdAt
+  const finishedAt = task.finishedAt ?? now
+  return Math.max(0, finishedAt - startedAt)
+}
+
+function appendTaskEvent(
+  task: CodexTaskRecord,
+  status: CodexTaskStatus,
+  note?: string,
+) {
+  const now = Date.now()
+  task.status = status
+  task.updatedAt = now
+  if (status === 'running' && !task.startedAt) task.startedAt = now
+  if (status === 'completed' || status === 'failed' || status === 'canceled') {
+    task.finishedAt = now
+    task.durationMs = taskDuration(task, now)
+  }
+  if (note) task.error = note
+  task.events.push({ status, at: now, note })
+}
+
+function writeTask(task: CodexTaskRecord) {
+  const store = readTaskStore()
+  const index = store.tasks.findIndex((item) => item.id === task.id)
+  if (index >= 0) {
+    store.tasks[index] = task
+  } else {
+    store.tasks.push(task)
+  }
+  writeTaskStore(store)
+}
+
+function updateTask(
+  taskId: string,
+  status: CodexTaskStatus,
+  update?: {
+    note?: string
+    exitCode?: number | null
+  },
+) {
+  const store = readTaskStore()
+  const task = store.tasks.find((item) => item.id === taskId)
+  if (!task) return null
+  appendTaskEvent(task, status, update?.note)
+  if (Object.prototype.hasOwnProperty.call(update ?? {}, 'exitCode')) {
+    task.exitCode = update?.exitCode
+  }
+  writeTaskStore(store)
+  return task
+}
+
+function createTaskRecord(input: {
+  id: string
+  sessionKey: string
+  messageId: string
+  prompt: string
+  snapshot: CodexTaskSnapshot
+  runProfile?: string
+  retryOf?: string
+}) {
+  const now = Date.now()
+  const task: CodexTaskRecord = {
+    id: input.id,
+    sessionKey: input.sessionKey,
+    messageId: input.messageId,
+    prompt: input.prompt,
+    message: input.snapshot.message,
+    runProfile: input.runProfile,
+    status: 'queued',
+    createdAt: now,
+    updatedAt: now,
+    retryOf: input.retryOf,
+    snapshot: input.snapshot,
+    events: [{ status: 'queued', at: now }],
+  }
+  writeTask(task)
+  return task
 }
 
 function deriveFriendlyIdFromKey(key: string) {
@@ -1066,6 +1289,8 @@ function runCodexExec(
     env: process.env,
     shell: process.platform === 'win32',
   })
+  runningTasks.set(runId, child)
+  updateTask(runId, 'running')
 
   let stdoutBuffer = ''
   let stderrBuffer = ''
@@ -1139,8 +1364,17 @@ function runCodexExec(
 
   child.stdin.end(prompt)
 
+  function currentTaskStatus() {
+    return readTaskStore().tasks.find((task) => task.id === runId)?.status
+  }
+
   child.on('error', (error) => {
     preparedAttachments.cleanup()
+    runningTasks.delete(runId)
+    updateTask(runId, 'failed', {
+      note: error.message,
+      exitCode: null,
+    })
     const message = errorMessage(error.message)
     appendMessage(session, message)
     writeStore(store)
@@ -1158,6 +1392,20 @@ function runCodexExec(
 
   child.on('close', (code) => {
     preparedAttachments.cleanup()
+    runningTasks.delete(runId)
+    if (currentTaskStatus() === 'canceled') {
+      updateTask(runId, 'canceled', { exitCode: code })
+      emit(session.key, {
+        event: 'chat',
+        stateVersion,
+        payload: {
+          runId,
+          sessionKey: session.key,
+          state: 'aborted',
+        },
+      })
+      return
+    }
     const trailing = processCodexJsonLine(stdoutBuffer.trim())
     if (trailing) {
       if (trailing.kind === 'message-delta') {
@@ -1175,19 +1423,36 @@ function runCodexExec(
           (trailing.kind === 'assistant-final' || code === 0)
         ) {
           appendFinalText(assistantText)
+          updateTask(runId, 'completed', { exitCode: code })
           return
         }
-        if (emittedFinal && code === 0) return
+        if (emittedFinal && code === 0) {
+          updateTask(runId, 'completed', { exitCode: code })
+          return
+        }
       }
     }
 
-    if (emittedFinal && code === 0) return
+    if (emittedFinal && code === 0) {
+      updateTask(runId, 'completed', { exitCode: code })
+      return
+    }
     if (code === 0 && assistantText) {
       appendFinalText(assistantText)
+      updateTask(runId, 'completed', { exitCode: code })
       return
     }
 
     const detail = stderrBuffer.trim()
+    const taskErrorDetail =
+      detail ||
+      (code === 0
+        ? 'Codex CLI finished without returning an assistant message.'
+        : 'Codex CLI exited with status ' + (code ?? 'unknown') + '.')
+    updateTask(runId, 'failed', {
+      note: taskErrorDetail,
+      exitCode: code,
+    })
     const fallback =
       code === 0
         ? 'Codex CLI finished without returning an assistant message.'
@@ -1629,13 +1894,16 @@ export function sendCodexPrompt(input: SendCodexPromptInput) {
   const store = readStore()
   const session = ensureSession(input.sessionKey || 'main')
   const prompt = buildUserPrompt(input)
+  const runId = randomUUID()
+  const messageId = input.idempotencyKey || randomUUID()
 
   const userMessage: CodexMessage = {
-    id: input.idempotencyKey || randomUUID(),
+    id: messageId,
     clientId: input.idempotencyKey,
     role: 'user',
     timestamp: Date.now(),
     details: {
+      taskId: runId,
       runProfile: profile.id,
       sandbox: profile.sandbox,
       approval: profile.approval,
@@ -1645,7 +1913,24 @@ export function sendCodexPrompt(input: SendCodexPromptInput) {
   appendMessage(session, userMessage)
   writeStore(store)
 
-  const runId = randomUUID()
+  createTaskRecord({
+    id: runId,
+    sessionKey: session.key,
+    messageId,
+    prompt,
+    runProfile: profile.id,
+    retryOf: input.retryOf,
+    snapshot: {
+      sessionKey: session.key,
+      message: input.message,
+      thinking: input.thinking,
+      attachments: input.attachments,
+      contextBlock: input.contextBlock,
+      runProfile: profile.id,
+      confirmedRisk: input.confirmedRisk,
+    },
+  })
+
   emit(session.key, {
     event: 'chat',
     stateVersion,
@@ -1686,6 +1971,109 @@ export function listCodexSessions() {
     sessions: store.sessions
       .map(normalizeSession)
       .sort((a, b) => b.updatedAt - a.updatedAt),
+  }
+}
+
+function isTerminalTaskStatus(status: CodexTaskStatus) {
+  return status === 'completed' || status === 'failed' || status === 'canceled'
+}
+
+function publicTaskRecord(task: CodexTaskRecord) {
+  return {
+    id: task.id,
+    sessionKey: task.sessionKey,
+    messageId: task.messageId,
+    message: task.message,
+    runProfile: task.runProfile,
+    status: task.status,
+    createdAt: task.createdAt,
+    updatedAt: task.updatedAt,
+    startedAt: task.startedAt,
+    finishedAt: task.finishedAt,
+    durationMs: task.durationMs,
+    exitCode: task.exitCode,
+    error: task.error,
+    retryOf: task.retryOf,
+    events: task.events,
+  }
+}
+
+export function listCodexTasks() {
+  const store = readTaskStore()
+  let changed = false
+  for (const task of store.tasks) {
+    if (!isTerminalTaskStatus(task.status) && !runningTasks.has(task.id)) {
+      appendTaskEvent(
+        task,
+        'failed',
+        'Task process is not attached to the current CodexClaw server.',
+      )
+      changed = true
+    } else if (!task.durationMs && task.startedAt) {
+      task.durationMs = taskDuration(task)
+    }
+  }
+  if (changed) writeTaskStore(store)
+  return {
+    tasks: store.tasks
+      .slice()
+      .sort((first, second) => second.createdAt - first.createdAt)
+      .map(publicTaskRecord),
+  }
+}
+
+export function cancelCodexTask(taskId: string) {
+  const id = taskId.trim()
+  if (!id) throw new Error('task id required')
+  const store = readTaskStore()
+  const task = store.tasks.find((item) => item.id === id)
+  if (!task) throw new Error('Task not found: ' + id)
+  if (isTerminalTaskStatus(task.status)) {
+    return { ok: true, task: publicTaskRecord(task) }
+  }
+  const child = runningTasks.get(id)
+  if (!child) {
+    appendTaskEvent(
+      task,
+      'failed',
+      'Task process is not attached to the current CodexClaw server.',
+    )
+    writeTaskStore(store)
+    throw new Error('Task is not running.')
+  }
+  appendTaskEvent(task, 'canceled', 'Canceled by user.')
+  writeTaskStore(store)
+  child.kill()
+  emit(task.sessionKey, {
+    event: 'chat',
+    stateVersion,
+    payload: {
+      runId: id,
+      sessionKey: task.sessionKey,
+      state: 'aborted',
+    },
+  })
+  return { ok: true, task: publicTaskRecord(task) }
+}
+
+export function retryCodexTask(taskId: string) {
+  const id = taskId.trim()
+  if (!id) throw new Error('task id required')
+  const store = readTaskStore()
+  const task = store.tasks.find((item) => item.id === id)
+  if (!task) throw new Error('Task not found: ' + id)
+  if (task.status !== 'failed' && task.status !== 'canceled') {
+    throw new Error('Only failed or canceled tasks can be retried.')
+  }
+  const result = sendCodexPrompt({
+    ...task.snapshot,
+    retryOf: task.id,
+    idempotencyKey: randomUUID(),
+  })
+  return {
+    ok: true,
+    retryOf: task.id,
+    ...result,
   }
 }
 
@@ -1736,5 +2124,7 @@ export function codexCliCheck() {
 export function resetCodexServerStateForTests() {
   storeCache = null
   workspaceStoreCache = null
+  taskStoreCache = null
+  runningTasks.clear()
   stateVersion = 0
 }
