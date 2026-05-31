@@ -1,4 +1,4 @@
-import type { GatewayMessage } from './types'
+import type { GatewayMessage, RepoContextSelection } from './types'
 import type { AttachmentFile } from '@/components/attachment-button'
 import { randomUUID } from '@/lib/utils'
 
@@ -11,6 +11,7 @@ type OptimisticMessagePayload = {
 export function createOptimisticMessage(
   body: string,
   attachments?: Array<AttachmentFile>,
+  contextSelections?: Array<RepoContextSelection>,
 ): OptimisticMessagePayload {
   const clientId = randomUUID()
   const optimisticId = `opt-${clientId}`
@@ -39,6 +40,13 @@ export function createOptimisticMessage(
 
   if (body.trim()) {
     content.push({ type: 'text', text: body })
+  } else if (contextSelections && contextSelections.length > 0) {
+    content.push({
+      type: 'text',
+      text:
+        'Repository context: ' +
+        contextSelections.map((selection) => selection.path).join(', '),
+    })
   } else if (attachments && attachments.length > 0) {
     content.push({ type: 'text', text: '' })
   }

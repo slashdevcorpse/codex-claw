@@ -7,6 +7,8 @@ import {
   resolveCodexSession,
   sendCodexPrompt,
 } from '../../server/codex-cli'
+import { buildRepositoryContextPrompt } from '../../server/repo-context'
+import type { RepoContextSelection } from '../../server/repo-context'
 
 type ParsedAttachment = {
   mimeType: string
@@ -23,6 +25,28 @@ type AttachmentParseResult =
       ok: false
       error: string
     }
+
+function parseContextSelections(rawSelections: unknown) {
+  if (typeof rawSelections === 'undefined') return []
+  if (!Array.isArray(rawSelections)) return []
+
+  const selections: Array<RepoContextSelection> = []
+  for (const rawSelection of rawSelections.slice(0, 50)) {
+    if (!rawSelection || typeof rawSelection !== 'object') continue
+    const selection = rawSelection as Record<string, unknown>
+    const selectedPath =
+      typeof selection.path === 'string' ? selection.path.trim() : ''
+    if (!selectedPath) continue
+    selections.push({
+      path: selectedPath,
+      type:
+        selection.type === 'directory' || selection.type === 'file'
+          ? selection.type
+          : undefined,
+    })
+  }
+  return selections
+}
 
 function parseAttachments(rawAttachments: unknown): AttachmentParseResult {
   if (typeof rawAttachments === 'undefined') {
@@ -111,8 +135,19 @@ export const Route = createFileRoute('/api/send')({
             )
           }
           const attachments = parsedAttachments.attachments
+          const contextSelections = parseContextSelections(
+            body.contextSelections,
+          )
+          const contextBlock =
+            contextSelections.length > 0
+              ? buildRepositoryContextPrompt(contextSelections)
+              : undefined
 
-          if (!message.trim() && (!attachments || attachments.length === 0)) {
+          if (
+            !message.trim() &&
+            (!attachments || attachments.length === 0) &&
+            !contextBlock
+          ) {
             return json(
               { ok: false, error: 'message required' },
               { status: 400 },
@@ -143,6 +178,7 @@ export const Route = createFileRoute('/api/send')({
             message,
             thinking,
             attachments,
+            contextBlock,
             idempotencyKey:
               typeof body.idempotencyKey === 'string'
                 ? body.idempotencyKey

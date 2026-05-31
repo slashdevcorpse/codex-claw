@@ -1,7 +1,13 @@
 import { memo, useCallback, useRef, useState } from 'react'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { ArrowUp02Icon } from '@hugeicons/core-free-icons'
+import {
+  RepoContextButton,
+  RepoContextPanel,
+  RepoContextSummary,
+} from './repo-context-picker'
 import type { Ref } from 'react'
+import type { RepoContextSelection } from '../types'
 
 import type { AttachmentFile } from '@/components/attachment-button'
 import {
@@ -27,6 +33,7 @@ type ChatComposerHelpers = {
   reset: () => void
   setValue: (value: string) => void
   attachments?: Array<AttachmentFile>
+  contextSelections?: Array<RepoContextSelection>
 }
 
 function ChatComposerComponent({
@@ -36,6 +43,10 @@ function ChatComposerComponent({
   wrapperRef,
 }: ChatComposerProps) {
   const [attachments, setAttachments] = useState<Array<AttachmentFile>>([])
+  const [contextOpen, setContextOpen] = useState(false)
+  const [contextSelections, setContextSelections] = useState<
+    Array<RepoContextSelection>
+  >([])
   const promptRef = useRef<HTMLTextAreaElement | null>(null)
   const valueRef = useRef('')
   const setValueRef = useRef<((value: string) => void) | null>(null)
@@ -57,6 +68,8 @@ function ChatComposerComponent({
       })
       return []
     })
+    setContextSelections([])
+    setContextOpen(false)
     focusPrompt()
   }, [focusPrompt])
   const handleFileSelect = useCallback((file: AttachmentFile) => {
@@ -71,6 +84,11 @@ function ChatComposerComponent({
       return prev.filter((attachment) => attachment.id !== id)
     })
   }, [])
+  const handleRemoveContext = useCallback((path: string) => {
+    setContextSelections((prev) =>
+      prev.filter((selection) => selection.path !== path),
+    )
+  }, [])
   const setComposerValue = useCallback(
     (nextValue: string) => {
       if (setValueRef.current) {
@@ -83,16 +101,30 @@ function ChatComposerComponent({
   const handleSubmit = useCallback(() => {
     if (disabled) return
     const body = valueRef.current.trim()
-    // Allow submit if there's text OR valid attachments
+    // Allow submit if there is text, an image, or selected repo context.
     const validAttachments = attachments.filter((a) => !a.error && a.base64)
-    if (body.length === 0 && validAttachments.length === 0) return
+    if (
+      body.length === 0 &&
+      validAttachments.length === 0 &&
+      contextSelections.length === 0
+    )
+      return
     onSubmit(body, {
       reset,
       setValue: setComposerValue,
       attachments: validAttachments,
+      contextSelections,
     })
     focusPrompt()
-  }, [disabled, focusPrompt, onSubmit, reset, setComposerValue, attachments])
+  }, [
+    disabled,
+    focusPrompt,
+    onSubmit,
+    reset,
+    setComposerValue,
+    attachments,
+    contextSelections,
+  ])
   const submitDisabled = disabled
 
   return (
@@ -112,6 +144,15 @@ function ChatComposerComponent({
             attachments={attachments}
             onRemove={handleRemoveAttachment}
           />
+          <RepoContextSummary
+            selections={contextSelections}
+            onRemove={handleRemoveContext}
+          />
+          <RepoContextPanel
+            open={contextOpen}
+            selections={contextSelections}
+            onSelectionsChange={setContextSelections}
+          />
           <PromptInputTextarea
             placeholder="Type a message…"
             inputRef={promptRef}
@@ -123,6 +164,20 @@ function ChatComposerComponent({
                 render={(triggerProps) => (
                   <AttachmentButton
                     onFileSelect={handleFileSelect}
+                    disabled={disabled}
+                    buttonProps={{
+                      ...triggerProps,
+                      className: cn('rounded-full', triggerProps.className),
+                    }}
+                  />
+                )}
+              />
+              <PromptInputAction
+                tooltip="Attach repository context"
+                render={(triggerProps) => (
+                  <RepoContextButton
+                    open={contextOpen}
+                    onToggle={() => setContextOpen((current) => !current)}
                     disabled={disabled}
                     buttonProps={{
                       ...triggerProps,

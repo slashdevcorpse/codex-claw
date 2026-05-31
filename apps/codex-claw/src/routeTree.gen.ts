@@ -17,6 +17,7 @@ import { Route as ApiWorkspacesRouteImport } from './routes/api/workspaces'
 import { Route as ApiStreamRouteImport } from './routes/api/stream'
 import { Route as ApiSessionsRouteImport } from './routes/api/sessions'
 import { Route as ApiSendRouteImport } from './routes/api/send'
+import { Route as ApiRepoContextRouteImport } from './routes/api/repo-context'
 import { Route as ApiPingRouteImport } from './routes/api/ping'
 import { Route as ApiPathsRouteImport } from './routes/api/paths'
 import { Route as ApiHistoryRouteImport } from './routes/api/history'
@@ -61,6 +62,11 @@ const ApiSendRoute = ApiSendRouteImport.update({
   path: '/api/send',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiRepoContextRoute = ApiRepoContextRouteImport.update({
+  id: '/api/repo-context',
+  path: '/api/repo-context',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPingRoute = ApiPingRouteImport.update({
   id: '/api/ping',
   path: '/api/ping',
@@ -84,6 +90,7 @@ export interface FileRoutesByFullPath {
   '/api/history': typeof ApiHistoryRoute
   '/api/paths': typeof ApiPathsRoute
   '/api/ping': typeof ApiPingRoute
+  '/api/repo-context': typeof ApiRepoContextRoute
   '/api/send': typeof ApiSendRoute
   '/api/sessions': typeof ApiSessionsRoute
   '/api/stream': typeof ApiStreamRoute
@@ -97,6 +104,7 @@ export interface FileRoutesByTo {
   '/api/history': typeof ApiHistoryRoute
   '/api/paths': typeof ApiPathsRoute
   '/api/ping': typeof ApiPingRoute
+  '/api/repo-context': typeof ApiRepoContextRoute
   '/api/send': typeof ApiSendRoute
   '/api/sessions': typeof ApiSessionsRoute
   '/api/stream': typeof ApiStreamRoute
@@ -111,6 +119,7 @@ export interface FileRoutesById {
   '/api/history': typeof ApiHistoryRoute
   '/api/paths': typeof ApiPathsRoute
   '/api/ping': typeof ApiPingRoute
+  '/api/repo-context': typeof ApiRepoContextRoute
   '/api/send': typeof ApiSendRoute
   '/api/sessions': typeof ApiSessionsRoute
   '/api/stream': typeof ApiStreamRoute
@@ -126,6 +135,7 @@ export interface FileRouteTypes {
     | '/api/history'
     | '/api/paths'
     | '/api/ping'
+    | '/api/repo-context'
     | '/api/send'
     | '/api/sessions'
     | '/api/stream'
@@ -139,6 +149,7 @@ export interface FileRouteTypes {
     | '/api/history'
     | '/api/paths'
     | '/api/ping'
+    | '/api/repo-context'
     | '/api/send'
     | '/api/sessions'
     | '/api/stream'
@@ -152,6 +163,7 @@ export interface FileRouteTypes {
     | '/api/history'
     | '/api/paths'
     | '/api/ping'
+    | '/api/repo-context'
     | '/api/send'
     | '/api/sessions'
     | '/api/stream'
@@ -166,6 +178,7 @@ export interface RootRouteChildren {
   ApiHistoryRoute: typeof ApiHistoryRoute
   ApiPathsRoute: typeof ApiPathsRoute
   ApiPingRoute: typeof ApiPingRoute
+  ApiRepoContextRoute: typeof ApiRepoContextRoute
   ApiSendRoute: typeof ApiSendRoute
   ApiSessionsRoute: typeof ApiSessionsRoute
   ApiStreamRoute: typeof ApiStreamRoute
@@ -231,6 +244,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiSendRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/repo-context': {
+      id: '/api/repo-context'
+      path: '/api/repo-context'
+      fullPath: '/api/repo-context'
+      preLoaderRoute: typeof ApiRepoContextRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/ping': {
       id: '/api/ping'
       path: '/api/ping'
@@ -262,6 +282,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiHistoryRoute: ApiHistoryRoute,
   ApiPathsRoute: ApiPathsRoute,
   ApiPingRoute: ApiPingRoute,
+  ApiRepoContextRoute: ApiRepoContextRoute,
   ApiSendRoute: ApiSendRoute,
   ApiSessionsRoute: ApiSessionsRoute,
   ApiStreamRoute: ApiStreamRoute,

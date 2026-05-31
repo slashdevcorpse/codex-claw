@@ -43,6 +43,7 @@ import { shouldRedirectToConnect } from './hooks/use-chat-error-state'
 import { useChatRedirect } from './hooks/use-chat-redirect'
 import type { AttachmentFile } from '@/components/attachment-button'
 import type { ChatComposerHelpers } from './components/chat-composer'
+import type { RepoContextSelection } from './types'
 import { useExport } from '@/hooks/use-export'
 import { useChatSettings } from '@/hooks/use-chat-settings'
 import { cn, randomUUID } from '@/lib/utils'
@@ -158,7 +159,8 @@ export function ChatScreen({
     !isRecentSession(activeFriendlyId) &&
     sessionsQuery.isSuccess &&
     !sessions.some((session) => session.friendlyId === activeFriendlyId) &&
-    (missingSessionError || (!historyQuery.isFetching && !historyQuery.isSuccess))
+    (missingSessionError ||
+      (!historyQuery.isFetching && !historyQuery.isSuccess))
 
   const refreshHistory = useCallback(() => {
     void historyQuery.refetch()
@@ -229,12 +231,14 @@ export function ChatScreen({
     body: string,
     skipOptimistic = false,
     attachments?: Array<AttachmentFile>,
+    contextSelections?: Array<RepoContextSelection>,
   ) {
     let optimisticClientId = ''
     if (!skipOptimistic) {
       const { clientId, optimisticMessage } = createOptimisticMessage(
         body,
         attachments,
+        contextSelections,
       )
       optimisticClientId = clientId
       appendHistoryMessage(
@@ -272,6 +276,7 @@ export function ChatScreen({
         thinking: settings.thinkingLevel,
         idempotencyKey: randomUUID(),
         attachments: attachmentsPayload,
+        contextSelections,
       }),
     })
       .then(async (res) => {
@@ -349,13 +354,18 @@ export function ChatScreen({
   const send = useCallback(
     (body: string, helpers: ChatComposerHelpers) => {
       const attachments = helpers.attachments
-      if (body.length === 0 && (!attachments || attachments.length === 0))
+      const contextSelections = helpers.contextSelections
+      if (
+        body.length === 0 &&
+        (!attachments || attachments.length === 0) &&
+        (!contextSelections || contextSelections.length === 0)
+      )
         return
       helpers.reset()
 
       if (isNewChat) {
         const { clientId, optimisticId, optimisticMessage } =
-          createOptimisticMessage(body, attachments)
+          createOptimisticMessage(body, attachments, contextSelections)
         appendHistoryMessage(queryClient, 'new', 'new', optimisticMessage)
         setPendingGeneration(true)
         setSending(true)
@@ -371,6 +381,7 @@ export function ChatScreen({
               message: body,
               optimisticMessage,
               attachments,
+              contextSelections,
             })
             if (onSessionResolved) {
               onSessionResolved({ sessionKey, friendlyId })
@@ -404,7 +415,14 @@ export function ChatScreen({
         resolvedSessionKey ||
         activeSessionKey ||
         activeFriendlyId
-      sendMessage(sessionKeyForSend, activeFriendlyId, body, false, attachments)
+      sendMessage(
+        sessionKeyForSend,
+        activeFriendlyId,
+        body,
+        false,
+        attachments,
+        contextSelections,
+      )
     },
     [
       activeFriendlyId,

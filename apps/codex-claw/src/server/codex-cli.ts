@@ -77,6 +77,7 @@ type SendCodexPromptInput = {
   message: string
   thinking?: string
   attachments?: Array<AttachmentInput>
+  contextBlock?: string
   idempotencyKey?: string
 }
 
@@ -590,6 +591,9 @@ function buildUserPrompt(input: SendCodexPromptInput) {
     parts.push(
       `Attached image count: ${input.attachments.length}. Review the attached image files when they are relevant to the request.`,
     )
+  }
+  if (input.contextBlock?.trim()) {
+    parts.push(input.contextBlock.trim())
   }
   return parts.join('\n\n')
 }

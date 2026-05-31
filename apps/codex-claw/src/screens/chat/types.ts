@@ -131,3 +131,39 @@ export type WorkspaceListResponse = {
   workspaces: Array<WorkspaceSummary>
   health: WorkspaceHealthPayload
 }
+
+export type RepoContextEntry = {
+  path: string
+  name: string
+  type: 'file' | 'directory'
+  depth: number
+  size?: number
+}
+
+export type RepoAgentFile = {
+  path: string
+  directory: string
+  appliesToSelected: boolean
+}
+
+export type RepoContextSelection = {
+  path: string
+  type?: 'file' | 'directory'
+}
+
+export type RepoContextEstimate = {
+  selectedPaths: Array<string>
+  fileCount: number
+  byteCount: number
+  estimatedTokens: number
+  oversized: boolean
+  truncated: boolean
+}
+
+export type RepoContextPayload = {
+  workdir: string
+  entries: Array<RepoContextEntry>
+  agents: Array<RepoAgentFile>
+  applicableAgents: Array<RepoAgentFile>
+  estimate: RepoContextEstimate
+}

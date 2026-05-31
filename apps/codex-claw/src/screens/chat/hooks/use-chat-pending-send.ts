@@ -8,7 +8,7 @@ import {
 import type { QueryClient } from '@tanstack/react-query'
 
 import type { AttachmentFile } from '@/components/attachment-button'
-import type { HistoryResponse } from '../types'
+import type { HistoryResponse, RepoContextSelection } from '../types'
 
 type UseChatPendingSendInput = {
   activeFriendlyId: string
@@ -25,6 +25,7 @@ type UseChatPendingSendInput = {
     body: string,
     skipOptimistic: boolean,
     attachments?: Array<AttachmentFile>,
+    contextSelections?: Array<RepoContextSelection>,
   ) => void
 }
 
@@ -98,6 +99,7 @@ export function useChatPendingSend({
       pending.message,
       true,
       pending.attachments,
+      pending.contextSelections,
     )
   }, [
     activeFriendlyId,
