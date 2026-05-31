@@ -1,7 +1,7 @@
 pre-commit:
   parallel: true
   commands:
-    eslint-webclaw:
-      glob: "apps/webclaw/**/*.{js,jsx,ts,tsx}"
-      run: "pnpm -C apps/webclaw exec eslint --fix ."
+    eslint-codex-claw:
+      glob: "apps/codex-claw/**/*.{js,jsx,ts,tsx}"
+      run: "pnpm -C apps/codex-claw exec eslint --fix ."
       stage_fixed: true

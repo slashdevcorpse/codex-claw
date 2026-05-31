@@ -1,19 +1,20 @@
 {
-  "name": "webclaw",
-  "version": "0.1.1",
+  "name": "codex-claw",
+  "version": "0.1.0-alpha.0",
   "private": false,
-  "description": "WebClaw CLI",
+  "description": "CodexClaw alpha CLI",
   "type": "module",
   "bin": {
-    "webclaw": "bin/webclaw.js"
+    "codex-claw": "bin/codex-claw.js"
   },
   "files": [
     "bin",
     "README.md"
   ],
   "keywords": [
-    "webclaw",
-    "openclaw",
+    "codex-claw",
+    "codex",
+    "codex-cli",
     "cli"
   ],
   "license": "MIT",
