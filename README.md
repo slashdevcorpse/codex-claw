@@ -98,10 +98,10 @@ Usage:
   codex-claw doctor          Validate local setup
 ~~~
 
-Local readiness check:
+Local source readiness check:
 
 ~~~console
-$ codex-claw doctor
+$ node packages/codex-claw/bin/codex-claw.js doctor
 Environment looks good.
 ~~~
 
