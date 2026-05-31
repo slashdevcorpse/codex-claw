@@ -11,29 +11,30 @@ function ConnectRoute() {
       <div className="max-w-2xl mx-auto px-6 py-10 space-y-10">
         <div className="space-y-3">
           <h1 className="text-3xl font-medium tracking-[-0.02em] text-center mb-10">
-            Connect to WebClaw
+            Connect to CodexClaw
           </h1>
           <p className="text-primary-700">
-            This client needs access to your OpenClaw gateway before you can
-            start chatting.
+            This alpha runs Codex CLI from the dashboard server. Confirm the
+            server process can find your local `codex` command before chatting.
           </p>
         </div>
         <div className="space-y-4 text-primary-700">
           <p>
-            At the root of the project, create a new file named{' '}
-            <code className="inline-code">.env.local</code>.
+            At the root of the app package, create a new file named{' '}
+            <code className="inline-code">.env.local</code> if you need to
+            override the defaults.
           </p>
           <div className="space-y-3">
             <p>Paste this into it:</p>
             <CodeBlock
-              content={`CLAWDBOT_GATEWAY_URL=ws://127.0.0.1:18789\nCLAWDBOT_GATEWAY_TOKEN=YOUR_TOKEN_HERE`}
-              ariaLabel="Copy gateway token example"
+              content={`CODEX_CLI_COMMAND=codex\nCODEX_CLI_SANDBOX=read-only`}
+              ariaLabel="Copy Codex CLI environment example"
               language="bash"
             />
-            <p className="text-primary-600 text-sm">or:</p>
+            <p className="text-primary-600 text-sm">Optional workspace root:</p>
             <CodeBlock
-              content="CLAWDBOT_GATEWAY_PASSWORD=YOUR_PASSWORD_HERE"
-              ariaLabel="Copy gateway password example"
+              content="CODEX_CLI_WORKDIR=C:/path/to/project"
+              ariaLabel="Copy Codex CLI workdir example"
               language="bash"
             />
           </div>
@@ -42,8 +43,8 @@ function ConnectRoute() {
             server:
           </p>
           <CodeBlock
-            content="npm run dev"
-            ariaLabel="Copy npm run dev"
+            content="pnpm dev"
+            ariaLabel="Copy pnpm dev"
             language="bash"
           />
           <p>Refresh the page after the restart and you should be connected.</p>
@@ -51,40 +52,39 @@ function ConnectRoute() {
 
         <div className="space-y-3 rounded-lg border border-primary-200 bg-primary-100 px-4 py-3 text-primary-700 text-sm">
           <p className="text-primary-900 font-medium">
-            Where to find these values
+            Codex CLI settings
           </p>
           <div className="space-y-3">
             <p>
-              <code className="inline-code">CLAWDBOT_GATEWAY_URL</code>
+              <code className="inline-code">CODEX_CLI_COMMAND</code>
               <br />
-              Your OpenClaw gateway endpoint (default is
-              <code className="inline-code">ws://127.0.0.1:18789</code>).
+              Command used by the server to invoke Codex CLI. The default is
+              <code className="inline-code">codex</code>.
             </p>
             <p>
-              <code className="inline-code">CLAWDBOT_GATEWAY_TOKEN</code>{' '}
+              <code className="inline-code">CODEX_CLI_SANDBOX</code>{' '}
               (recommended)
               <br />
-              Matches your Gateway token (
-              <code className="inline-code">gateway.auth.token</code> or
-              <code className="inline-code">OPENCLAW_GATEWAY_TOKEN</code>).
+              Sandbox mode passed to Codex CLI. The alpha default is
+              <code className="inline-code">read-only</code>.
             </p>
             <p>
-              <code className="inline-code">CLAWDBOT_GATEWAY_PASSWORD</code>{' '}
-              (fallback)
+              <code className="inline-code">CODEX_CLI_WORKDIR</code>{' '}
+              (optional)
               <br />
-              Matches your Gateway password (
-              <code className="inline-code">gateway.auth.password</code>).
+              Working directory used for Codex CLI runs. Defaults to the app
+              process directory.
             </p>
           </div>
           <p>
-            Gateway docs:{' '}
+            Codex CLI docs:{' '}
             <a
               className="text-primary-700 hover:text-primary-900 underline"
-              href="https://docs.openclaw.ai/gateway"
+              href="https://developers.openai.com/codex/cli"
               target="_blank"
               rel="noreferrer"
             >
-              https://docs.openclaw.ai/gateway
+              https://developers.openai.com/codex/cli
             </a>
           </p>
         </div>

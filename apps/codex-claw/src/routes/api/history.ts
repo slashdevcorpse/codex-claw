@@ -1,18 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { json } from '@tanstack/react-start'
-import { gatewayRpc } from '../../server/gateway'
-
-type ChatHistoryResponse = {
-  sessionKey: string
-  sessionId?: string
-  messages: Array<any>
-  thinkingLevel?: string
-}
-
-type SessionsResolveResponse = {
-  ok?: boolean
-  key?: string
-}
+import { getCodexHistory, resolveCodexSession } from '../../server/codex-cli'
 
 export const Route = createFileRoute('/api/history')({
   server: {
@@ -28,14 +16,7 @@ export const Route = createFileRoute('/api/history')({
             rawSessionKey && rawSessionKey.length > 0 ? rawSessionKey : ''
 
           if (!sessionKey && friendlyId) {
-            const resolved = await gatewayRpc<SessionsResolveResponse>(
-              'sessions.resolve',
-              {
-                key: friendlyId,
-                includeUnknown: true,
-                includeGlobal: true,
-              },
-            )
+            const resolved = await resolveCodexSession(friendlyId)
             const resolvedKey =
               typeof resolved.key === 'string' ? resolved.key.trim() : ''
             if (resolvedKey.length === 0) {
@@ -48,13 +29,7 @@ export const Route = createFileRoute('/api/history')({
             sessionKey = 'main'
           }
 
-          const payload = await gatewayRpc<ChatHistoryResponse>(
-            'chat.history',
-            {
-              sessionKey,
-              limit,
-            },
-          )
+          const payload = await getCodexHistory({ sessionKey, limit })
 
           return json(payload)
         } catch (err) {

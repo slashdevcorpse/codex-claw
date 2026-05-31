@@ -48,11 +48,11 @@ export const Route = createRootRoute({
         content: 'width=device-width, initial-scale=1',
       },
       {
-        title: 'WebClaw',
+        title: 'CodexClaw',
       },
       {
         name: 'description',
-        content: 'a fast web client for OpenClaw',
+        content: 'an alpha web client for Codex CLI',
       },
       {
         property: 'og:image',

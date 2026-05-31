@@ -136,7 +136,7 @@ export function ChatScreen({
     gatewayStatusQuery.error instanceof Error
       ? gatewayStatusQuery.error.message
       : gatewayStatusQuery.data && !gatewayStatusQuery.data.ok
-        ? gatewayStatusQuery.data.error || 'Gateway unavailable'
+        ? gatewayStatusQuery.data.error || 'Codex CLI unavailable'
         : null
   const gatewayError = gatewayStatusError ?? sessionsError ?? historyError
   const handleGatewayRefetch = useCallback(() => {

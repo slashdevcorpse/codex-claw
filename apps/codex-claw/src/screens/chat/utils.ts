@@ -125,7 +125,7 @@ export async function readError(res: Response): Promise<string> {
 }
 
 export const missingGatewayAuthMessage =
-  'Missing gateway auth. Set CLAWDBOT_GATEWAY_TOKEN (recommended) or CLAWDBOT_GATEWAY_PASSWORD in the server environment.'
+  'Codex CLI command failed. Set CODEX_CLI_COMMAND if the default command is not correct.'
 
 export function isMissingGatewayAuth(message: string): boolean {
   return message.includes(missingGatewayAuthMessage)
