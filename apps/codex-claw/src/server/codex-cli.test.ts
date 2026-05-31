@@ -8,6 +8,7 @@ import {
   deleteCodexWorkspace,
   getCodexArtifactFile,
   getCodexPaths,
+  getCodexRunEventLog,
   listCodexArtifacts,
   listCodexSessions,
   listCodexWorkspaces,
@@ -358,5 +359,72 @@ describe('codex workspace registry', function () {
         sessionKey: 'artifact-test',
       }).content.toString('utf8'),
     ).toBe('command output')
+  })
+
+  it('exports redacted run timeline events and token metrics', function () {
+    const paths = getCodexPaths()
+    mkdirSync(paths.stateDir, { recursive: true })
+    writeFileSync(
+      path.join(paths.stateDir, 'tasks.json'),
+      JSON.stringify({
+        version: 1,
+        tasks: [
+          {
+            id: 'run-1',
+            sessionKey: 'session-1',
+            messageId: 'message-1',
+            prompt: 'private prompt',
+            message: 'private message',
+            status: 'completed',
+            createdAt: 100,
+            updatedAt: 200,
+            startedAt: 120,
+            finishedAt: 200,
+            durationMs: 80,
+            exitCode: 0,
+            snapshot: {
+              sessionKey: 'session-1',
+              message: 'private message',
+            },
+            events: [{ status: 'completed', at: 200 }],
+            tokenMetrics: {
+              inputTokens: 10,
+              outputTokens: 5,
+              totalTokens: 15,
+            },
+            timeline: [
+              {
+                id: 'event-1',
+                kind: 'tool-call',
+                at: 150,
+                relativeMs: 30,
+                label: 'Tool call',
+                commandName: path.join(tempDir, 'run-tests.ps1'),
+                details: {
+                  cwd: tempDir,
+                },
+              },
+            ],
+          },
+        ],
+      }),
+    )
+    resetCodexServerStateForTests()
+
+    const log = getCodexRunEventLog({ id: 'run-1' })
+
+    expect(log).toMatchObject({
+      runId: 'run-1',
+      status: 'completed',
+      tokenMetricsAvailable: true,
+      tokenMetrics: {
+        totalTokens: 15,
+      },
+    })
+    expect(log).not.toHaveProperty('prompt')
+    expect(log.events[0].commandName).toBe(
+      '$WORKSPACE' + path.sep + 'run-tests.ps1',
+    )
+    expect(log.events[0].details).toEqual({ cwd: '$WORKSPACE' })
   })
 })
