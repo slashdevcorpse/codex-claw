@@ -44,7 +44,7 @@ import { shouldRedirectToConnect } from './hooks/use-chat-error-state'
 import { useChatRedirect } from './hooks/use-chat-redirect'
 import type { AttachmentFile } from '@/components/attachment-button'
 import type { ChatComposerHelpers } from './components/chat-composer'
-import type { RepoContextSelection } from './types'
+import type { RepoContextSelection, RunProfileId } from './types'
 import { useExport } from '@/hooks/use-export'
 import { useChatSettings } from '@/hooks/use-chat-settings'
 import { cn, randomUUID } from '@/lib/utils'
@@ -234,6 +234,8 @@ export function ChatScreen({
     skipOptimistic = false,
     attachments?: Array<AttachmentFile>,
     contextSelections?: Array<RepoContextSelection>,
+    runProfile?: RunProfileId,
+    confirmedRisk?: boolean,
   ) {
     let optimisticClientId = ''
     if (!skipOptimistic) {
@@ -279,6 +281,8 @@ export function ChatScreen({
         idempotencyKey: randomUUID(),
         attachments: attachmentsPayload,
         contextSelections,
+        runProfile,
+        confirmedRisk,
       }),
     })
       .then(async (res) => {
@@ -357,6 +361,8 @@ export function ChatScreen({
     (body: string, helpers: ChatComposerHelpers) => {
       const attachments = helpers.attachments
       const contextSelections = helpers.contextSelections
+      const runProfile = helpers.runProfile
+      const confirmedRisk = helpers.confirmedRisk
       if (
         body.length === 0 &&
         (!attachments || attachments.length === 0) &&
@@ -384,6 +390,8 @@ export function ChatScreen({
               optimisticMessage,
               attachments,
               contextSelections,
+              runProfile,
+              confirmedRisk,
             })
             if (onSessionResolved) {
               onSessionResolved({ sessionKey, friendlyId })
@@ -424,6 +432,8 @@ export function ChatScreen({
         false,
         attachments,
         contextSelections,
+        runProfile,
+        confirmedRisk,
       )
     },
     [

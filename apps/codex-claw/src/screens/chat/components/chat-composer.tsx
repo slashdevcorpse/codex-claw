@@ -1,13 +1,14 @@
-import { memo, useCallback, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { ArrowUp02Icon } from '@hugeicons/core-free-icons'
+import { fetchWorkspaces, updateWorkspace } from '../chat-queries'
 import {
   RepoContextButton,
   RepoContextPanel,
   RepoContextSummary,
 } from './repo-context-picker'
 import type { Ref } from 'react'
-import type { RepoContextSelection } from '../types'
+import type { RepoContextSelection, RunProfileId } from '../types'
 
 import type { AttachmentFile } from '@/components/attachment-button'
 import {
@@ -34,7 +35,33 @@ type ChatComposerHelpers = {
   setValue: (value: string) => void
   attachments?: Array<AttachmentFile>
   contextSelections?: Array<RepoContextSelection>
+  runProfile?: RunProfileId
+  confirmedRisk?: boolean
 }
+
+const runProfiles = [
+  {
+    id: 'read-only-inspect',
+    label: 'Inspect',
+    sandbox: 'read-only',
+    approval: 'untrusted',
+    requiresConfirmation: false,
+  },
+  {
+    id: 'workspace-write',
+    label: 'Write',
+    sandbox: 'workspace-write',
+    approval: 'on-request',
+    requiresConfirmation: true,
+  },
+  {
+    id: 'elevated-manual-review',
+    label: 'Elevated',
+    sandbox: 'danger-full-access',
+    approval: 'untrusted',
+    requiresConfirmation: true,
+  },
+] as const
 
 function ChatComposerComponent({
   onSubmit,
@@ -47,6 +74,10 @@ function ChatComposerComponent({
   const [contextSelections, setContextSelections] = useState<
     Array<RepoContextSelection>
   >([])
+  const [runProfile, setRunProfile] =
+    useState<RunProfileId>('read-only-inspect')
+  const [confirmedRisk, setConfirmedRisk] = useState(false)
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState('')
   const promptRef = useRef<HTMLTextAreaElement | null>(null)
   const valueRef = useRef('')
   const setValueRef = useRef<((value: string) => void) | null>(null)
@@ -70,8 +101,29 @@ function ChatComposerComponent({
     })
     setContextSelections([])
     setContextOpen(false)
+    setConfirmedRisk(false)
     focusPrompt()
   }, [focusPrompt])
+  useEffect(() => {
+    let cancelled = false
+    fetchWorkspaces()
+      .then((data) => {
+        if (cancelled) return
+        const activeWorkspace = data.workspaces.find(
+          (workspace) => workspace.id === data.activeWorkspaceId,
+        )
+        setActiveWorkspaceId(data.activeWorkspaceId)
+        if (activeWorkspace?.runProfile) {
+          setRunProfile(activeWorkspace.runProfile)
+        }
+      })
+      .catch(() => {
+        // ignore
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
   const handleFileSelect = useCallback((file: AttachmentFile) => {
     setAttachments((prev) => [...prev, file])
   }, [])
@@ -89,6 +141,28 @@ function ChatComposerComponent({
       prev.filter((selection) => selection.path !== path),
     )
   }, [])
+  const activeRunProfile = useMemo(() => {
+    return (
+      runProfiles.find((profile) => profile.id === runProfile) ?? runProfiles[0]
+    )
+  }, [runProfile])
+  const handleRunProfileChange = useCallback(
+    (value: string) => {
+      const nextProfile =
+        runProfiles.find((profile) => profile.id === value) ?? runProfiles[0]
+      setRunProfile(nextProfile.id)
+      setConfirmedRisk(false)
+      if (activeWorkspaceId) {
+        void updateWorkspace({
+          id: activeWorkspaceId,
+          runProfile: nextProfile.id,
+          codexSandbox: nextProfile.sandbox,
+          codexApproval: nextProfile.approval,
+        })
+      }
+    },
+    [activeWorkspaceId],
+  )
   const setComposerValue = useCallback(
     (nextValue: string) => {
       if (setValueRef.current) {
@@ -109,11 +183,14 @@ function ChatComposerComponent({
       contextSelections.length === 0
     )
       return
+    if (activeRunProfile.requiresConfirmation && !confirmedRisk) return
     onSubmit(body, {
       reset,
       setValue: setComposerValue,
       attachments: validAttachments,
       contextSelections,
+      runProfile,
+      confirmedRisk,
     })
     focusPrompt()
   }, [
@@ -124,8 +201,12 @@ function ChatComposerComponent({
     setComposerValue,
     attachments,
     contextSelections,
+    runProfile,
+    confirmedRisk,
+    activeRunProfile.requiresConfirmation,
   ])
-  const submitDisabled = disabled
+  const submitDisabled =
+    disabled || (activeRunProfile.requiresConfirmation && !confirmedRisk)
 
   return (
     <div
@@ -157,6 +238,34 @@ function ChatComposerComponent({
             placeholder="Type a message…"
             inputRef={promptRef}
           />
+          <div className="flex flex-wrap items-center gap-2 px-3 pb-2 text-xs text-primary-500">
+            <select
+              value={runProfile}
+              onChange={(event) => handleRunProfileChange(event.target.value)}
+              className="h-7 rounded-md border border-primary-200 bg-surface px-2 text-xs text-primary-800 outline-none"
+            >
+              {runProfiles.map((profile) => (
+                <option key={profile.id} value={profile.id}>
+                  {profile.label}
+                </option>
+              ))}
+            </select>
+            <span>
+              sandbox: {activeRunProfile.sandbox} · approval:{' '}
+              {activeRunProfile.approval}
+            </span>
+            {activeRunProfile.requiresConfirmation ? (
+              <label className="inline-flex items-center gap-1 text-amber-700">
+                <input
+                  type="checkbox"
+                  checked={confirmedRisk}
+                  onChange={(event) => setConfirmedRisk(event.target.checked)}
+                  className="size-3.5"
+                />
+                confirm
+              </label>
+            ) : null}
+          </div>
           <PromptInputActions className="justify-end px-3">
             <div className="flex items-center gap-2 min-h-8 flex-nowrap">
               <PromptInputAction

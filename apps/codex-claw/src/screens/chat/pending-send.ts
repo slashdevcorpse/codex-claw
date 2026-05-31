@@ -1,4 +1,8 @@
-import type { GatewayMessage, RepoContextSelection } from './types'
+import type {
+  GatewayMessage,
+  RepoContextSelection,
+  RunProfileId,
+} from './types'
 import type { AttachmentFile } from '@/components/attachment-button'
 
 export type PendingSendPayload = {
@@ -8,6 +12,8 @@ export type PendingSendPayload = {
   optimisticMessage: GatewayMessage
   attachments?: Array<AttachmentFile>
   contextSelections?: Array<RepoContextSelection>
+  runProfile?: RunProfileId
+  confirmedRisk?: boolean
 }
 
 let pendingSend: PendingSendPayload | null = null
