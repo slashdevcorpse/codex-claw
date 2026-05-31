@@ -123,6 +123,28 @@ function getCodexWorkdir() {
   return process.cwd()
 }
 
+function resolveCodexCommand(command: string) {
+  if (process.platform !== 'win32') return command
+  if (/[/\\]/.test(command) || /\.(cmd|exe|bat)$/i.test(command)) {
+    return command
+  }
+
+  const result = spawnSync('where.exe', [command], {
+    encoding: 'utf8',
+    stdio: 'pipe',
+  })
+  if (result.status !== 0) return command
+
+  const matches = result.stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+  const executable = matches.find((line) => /\.(cmd|exe|bat)$/i.test(line))
+  if (executable) return executable
+  if (matches.length > 0) return matches[0]
+  return command
+}
+
 function isSessionStore(value: unknown): value is SessionStore {
   if (!value || typeof value !== 'object') return false
   const candidate = value as Record<string, unknown>
@@ -333,12 +355,11 @@ function processCodexJsonLine(line: string) {
 function runCodexExec(sessionKey: string, prompt: string, runId: string) {
   const store = readStore()
   const session = ensureSession(sessionKey)
-  const command = getCodexCommand()
+  const command = resolveCodexCommand(getCodexCommand())
   const args = buildCodexArgs(prompt)
   const child = spawn(command, args, {
     cwd: getCodexWorkdir(),
     env: process.env,
-    shell: process.platform === 'win32',
   })
 
   let stdoutBuffer = ''
@@ -552,18 +573,13 @@ export function deleteCodexSession(key: string) {
 }
 
 export function codexCliCheck() {
-  const command = getCodexCommand()
-  const result = spawnSync(
-    process.platform === 'win32' ? `${command} --version` : command,
-    process.platform === 'win32' ? [] : ['--version'],
-    {
-      cwd: getCodexWorkdir(),
-      env: process.env,
-      stdio: 'pipe',
-      shell: process.platform === 'win32',
-      encoding: 'utf8',
-    },
-  )
+  const command = resolveCodexCommand(getCodexCommand())
+  const result = spawnSync(command, ['--version'], {
+    cwd: getCodexWorkdir(),
+    env: process.env,
+    stdio: 'pipe',
+    encoding: 'utf8',
+  })
 
   if (result.status === 0) {
     return { ok: true }
