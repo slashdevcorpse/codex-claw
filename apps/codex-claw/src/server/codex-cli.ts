@@ -118,6 +118,53 @@ type CodexPathsPayload = {
   stateDir: string
   sessionsDir: string
   storePath: string
+  workspacesStorePath: string
+  workspace: WorkspaceRecord
+}
+
+type WorkspaceRecord = {
+  id: string
+  name: string
+  codexCommand: string
+  codexSandbox: string
+  codexWorkdir: string
+  stateDir: string
+  createdAt: number
+  updatedAt: number
+}
+
+type WorkspaceStore = {
+  version: 1
+  activeWorkspaceId: string
+  workspaces: Array<WorkspaceRecord>
+}
+
+type WorkspaceInput = {
+  id?: string
+  name?: string
+  codexCommand?: string
+  codexSandbox?: string
+  codexWorkdir?: string
+  stateDir?: string
+  active?: boolean
+}
+
+type WorkspaceHealthStatus = 'ok' | 'warning' | 'error'
+
+type WorkspaceHealthCheck = {
+  id: string
+  label: string
+  status: WorkspaceHealthStatus
+  summary: string
+  detail?: string
+  fixCommand?: string
+}
+
+type WorkspaceHealthPayload = {
+  ok: boolean
+  workspaceId: string
+  checkedAt: number
+  checks: Array<WorkspaceHealthCheck>
 }
 
 type PreparedAttachmentFiles = {
@@ -147,13 +194,28 @@ const supportedImageMimeTypes = new Set([
 ])
 
 const listeners = new Map<string, Set<(event: CodexStreamEvent) => void>>()
+const defaultWorkspaceId = 'default'
+const supportedSandboxModes = new Set([
+  'read-only',
+  'workspace-write',
+  'danger-full-access',
+])
 let storeCache: SessionStore | null = null
+let workspaceStoreCache: WorkspaceStore | null = null
 let stateVersion = 0
 
-function getStateDir() {
+function getBaseStateDir() {
   const configured = process.env.CODEX_CLAW_STATE_DIR?.trim()
   if (configured) return path.resolve(configured)
   return path.join(process.cwd(), '.codex-claw')
+}
+
+function getWorkspacesStorePath() {
+  return path.join(getBaseStateDir(), 'workspaces.json')
+}
+
+function getStateDir() {
+  return getActiveWorkspace().stateDir
 }
 
 function getStorePath() {
@@ -161,17 +223,187 @@ function getStorePath() {
 }
 
 function getCodexCommand() {
-  return process.env.CODEX_CLI_COMMAND?.trim() || 'codex'
+  return getActiveWorkspace().codexCommand
 }
 
 function getCodexSandbox() {
-  return process.env.CODEX_CLI_SANDBOX?.trim() || 'read-only'
+  return getActiveWorkspace().codexSandbox
 }
 
 function getCodexWorkdir() {
+  return getActiveWorkspace().codexWorkdir
+}
+
+function defaultCodexCommand() {
+  return process.env.CODEX_CLI_COMMAND?.trim() || 'codex'
+}
+
+function defaultCodexSandbox() {
+  const configured = process.env.CODEX_CLI_SANDBOX?.trim()
+  return normalizeSandbox(configured)
+}
+
+function defaultCodexWorkdir() {
   const configured = process.env.CODEX_CLI_WORKDIR?.trim()
   if (configured) return path.resolve(configured)
   return process.cwd()
+}
+
+function defaultWorkspace(now = Date.now()): WorkspaceRecord {
+  return {
+    id: defaultWorkspaceId,
+    name: 'Default workspace',
+    codexCommand: defaultCodexCommand(),
+    codexSandbox: defaultCodexSandbox(),
+    codexWorkdir: defaultCodexWorkdir(),
+    stateDir: getBaseStateDir(),
+    createdAt: now,
+    updatedAt: now,
+  }
+}
+
+function normalizeSandbox(value: string | undefined) {
+  const trimmed = value?.trim()
+  if (trimmed && supportedSandboxModes.has(trimmed)) return trimmed
+  return 'read-only'
+}
+
+function normalizeRequiredString(value: unknown, fallback: string) {
+  if (typeof value !== 'string') return fallback
+  const trimmed = value.trim()
+  return trimmed || fallback
+}
+
+function normalizePath(value: unknown, fallback: string) {
+  if (typeof value !== 'string' || !value.trim()) return fallback
+  return path.resolve(value.trim())
+}
+
+function isWorkspaceRecord(value: unknown): value is WorkspaceRecord {
+  if (!value || typeof value !== 'object') return false
+  const candidate = value as Record<string, unknown>
+  return (
+    typeof candidate.id === 'string' &&
+    typeof candidate.name === 'string' &&
+    typeof candidate.codexCommand === 'string' &&
+    typeof candidate.codexSandbox === 'string' &&
+    typeof candidate.codexWorkdir === 'string' &&
+    typeof candidate.stateDir === 'string' &&
+    typeof candidate.createdAt === 'number' &&
+    typeof candidate.updatedAt === 'number'
+  )
+}
+
+function isWorkspaceStore(value: unknown): value is WorkspaceStore {
+  if (!value || typeof value !== 'object') return false
+  const candidate = value as Record<string, unknown>
+  return (
+    candidate.version === 1 &&
+    typeof candidate.activeWorkspaceId === 'string' &&
+    Array.isArray(candidate.workspaces)
+  )
+}
+
+function normalizeWorkspaceRecord(
+  value: Partial<WorkspaceRecord>,
+  fallback: WorkspaceRecord,
+): WorkspaceRecord {
+  return {
+    id: normalizeRequiredString(value.id, fallback.id),
+    name: normalizeRequiredString(value.name, fallback.name),
+    codexCommand: normalizeRequiredString(
+      value.codexCommand,
+      fallback.codexCommand,
+    ),
+    codexSandbox: normalizeSandbox(value.codexSandbox || fallback.codexSandbox),
+    codexWorkdir: normalizePath(value.codexWorkdir, fallback.codexWorkdir),
+    stateDir: normalizePath(value.stateDir, fallback.stateDir),
+    createdAt:
+      typeof value.createdAt === 'number' && Number.isFinite(value.createdAt)
+        ? value.createdAt
+        : fallback.createdAt,
+    updatedAt:
+      typeof value.updatedAt === 'number' && Number.isFinite(value.updatedAt)
+        ? value.updatedAt
+        : fallback.updatedAt,
+  }
+}
+
+function normalizeWorkspaceStore(value: unknown): WorkspaceStore {
+  const fallback = defaultWorkspace()
+  if (!isWorkspaceStore(value)) {
+    return {
+      version: 1,
+      activeWorkspaceId: fallback.id,
+      workspaces: [fallback],
+    }
+  }
+
+  const seen = new Set<string>()
+  const workspaces = value.workspaces
+    .filter(isWorkspaceRecord)
+    .map((workspace) => normalizeWorkspaceRecord(workspace, fallback))
+    .filter((workspace) => {
+      if (seen.has(workspace.id)) return false
+      seen.add(workspace.id)
+      return true
+    })
+
+  if (!seen.has(fallback.id)) {
+    workspaces.unshift(fallback)
+  }
+
+  const activeWorkspaceId = workspaces.some(
+    (workspace) => workspace.id === value.activeWorkspaceId,
+  )
+    ? value.activeWorkspaceId
+    : fallback.id
+
+  return {
+    version: 1,
+    activeWorkspaceId,
+    workspaces,
+  }
+}
+
+function readWorkspaceStore(): WorkspaceStore {
+  if (workspaceStoreCache) return workspaceStoreCache
+  const storePath = getWorkspacesStorePath()
+  if (!existsSync(storePath)) {
+    workspaceStoreCache = normalizeWorkspaceStore(null)
+    return workspaceStoreCache
+  }
+
+  try {
+    const parsed = JSON.parse(readFileSync(storePath, 'utf8')) as unknown
+    workspaceStoreCache = normalizeWorkspaceStore(parsed)
+  } catch {
+    workspaceStoreCache = normalizeWorkspaceStore(null)
+  }
+
+  return workspaceStoreCache
+}
+
+function writeWorkspaceStore(store: WorkspaceStore) {
+  const nextStore = normalizeWorkspaceStore(store)
+  const stateDir = getBaseStateDir()
+  mkdirSync(stateDir, { recursive: true })
+  const storePath = getWorkspacesStorePath()
+  const tempPath = `${storePath}.${process.pid}.tmp`
+  writeFileSync(tempPath, `${JSON.stringify(nextStore, null, 2)}\n`)
+  renameSync(tempPath, storePath)
+  workspaceStoreCache = nextStore
+  storeCache = null
+  stateVersion += 1
+}
+
+function getActiveWorkspace() {
+  const store = readWorkspaceStore()
+  const activeWorkspace = store.workspaces.find(
+    (workspace) => workspace.id === store.activeWorkspaceId,
+  )
+  if (activeWorkspace) return activeWorkspace
+  return store.workspaces[0] || defaultWorkspace()
 }
 
 function resolveCodexCommand(command: string) {
@@ -376,7 +608,10 @@ function buildCodexArgs(imagePaths: Array<string>) {
   return args
 }
 
-function messageFromAssistantText(text: string, id = randomUUID()): CodexMessage {
+function messageFromAssistantText(
+  text: string,
+  id = randomUUID(),
+): CodexMessage {
   return {
     id,
     role: 'assistant',
@@ -395,7 +630,9 @@ function errorMessage(text: string): CodexMessage {
   }
 }
 
-function imageContentFromAttachment(attachment: AttachmentInput): MessageContent {
+function imageContentFromAttachment(
+  attachment: AttachmentInput,
+): MessageContent {
   return {
     type: 'image',
     source: {
@@ -406,7 +643,9 @@ function imageContentFromAttachment(attachment: AttachmentInput): MessageContent
   }
 }
 
-function contentFromUserInput(input: SendCodexPromptInput): Array<MessageContent> {
+function contentFromUserInput(
+  input: SendCodexPromptInput,
+): Array<MessageContent> {
   const content: Array<MessageContent> = []
 
   for (const attachment of input.attachments ?? []) {
@@ -805,16 +1044,19 @@ function runCodexExec(
         writeStore(store)
         emitStreamMessage(trailing.message, 'delta')
       } else {
-      assistantText = mergeAssistantText(
-        assistantText,
-        trailing.text,
-        trailing.kind,
-      )
-      if (!emittedFinal && (trailing.kind === 'assistant-final' || code === 0)) {
-        appendFinalText(assistantText)
-        return
-      }
-      if (emittedFinal && code === 0) return
+        assistantText = mergeAssistantText(
+          assistantText,
+          trailing.text,
+          trailing.kind,
+        )
+        if (
+          !emittedFinal &&
+          (trailing.kind === 'assistant-final' || code === 0)
+        ) {
+          appendFinalText(assistantText)
+          return
+        }
+        if (emittedFinal && code === 0) return
       }
     }
 
@@ -845,6 +1087,390 @@ function runCodexExec(
   })
 }
 
+function workspaceIdFromName(name: string, workspaces: Array<WorkspaceRecord>) {
+  const base =
+    name
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 48) || 'workspace'
+  const taken = new Set(workspaces.map((workspace) => workspace.id))
+  if (!taken.has(base)) return base
+
+  for (let index = 2; index < 1000; index += 1) {
+    const candidate = `${base}-${index}`
+    if (!taken.has(candidate)) return candidate
+  }
+
+  return randomUUID()
+}
+
+function findWorkspace(store: WorkspaceStore, id: string) {
+  const workspaceId = id.trim()
+  return store.workspaces.find((workspace) => workspace.id === workspaceId)
+}
+
+function quoteCommandArg(value: string) {
+  return `"${value.replace(/"/g, '\\"')}"`
+}
+
+function runTool(command: string, args: Array<string>, cwd: string) {
+  const resolvedCommand = resolveCodexCommand(command)
+  if (process.platform === 'win32' && /\.(cmd|bat)$/i.test(resolvedCommand)) {
+    const shellCommand = [resolvedCommand, ...args]
+      .map(quoteCommandArg)
+      .join(' ')
+    return spawnSync(shellCommand, {
+      cwd,
+      env: process.env,
+      stdio: 'pipe',
+      shell: true,
+      encoding: 'utf8',
+    })
+  }
+
+  return spawnSync(resolvedCommand, args, {
+    cwd,
+    env: process.env,
+    stdio: 'pipe',
+    encoding: 'utf8',
+  })
+}
+
+function commandOutput(result: ReturnType<typeof spawnSync>) {
+  return String(
+    result.stdout || result.stderr || result.error?.message || '',
+  ).trim()
+}
+
+function checkCodexCli(workspace: WorkspaceRecord): WorkspaceHealthCheck {
+  const cwd = existsSync(workspace.codexWorkdir)
+    ? workspace.codexWorkdir
+    : process.cwd()
+  const result = runTool(workspace.codexCommand, ['--version'], cwd)
+  const output = commandOutput(result)
+
+  if (result.status === 0) {
+    return {
+      id: 'codex-cli',
+      label: 'Codex CLI',
+      status: 'ok',
+      summary: output || 'Codex CLI is available.',
+      detail: workspace.codexCommand,
+    }
+  }
+
+  return {
+    id: 'codex-cli',
+    label: 'Codex CLI',
+    status: 'error',
+    summary: 'Codex CLI command failed.',
+    detail: output || `Unable to run ${workspace.codexCommand} --version.`,
+    fixCommand:
+      workspace.codexCommand === 'codex'
+        ? 'npm install -g @openai/codex'
+        : 'Set this workspace to a working Codex CLI command.',
+  }
+}
+
+function checkCodexAuth(): WorkspaceHealthCheck {
+  if (process.env.OPENAI_API_KEY || process.env.CODEX_API_KEY) {
+    return {
+      id: 'auth',
+      label: 'Auth',
+      status: 'ok',
+      summary: 'API key environment variable is available.',
+    }
+  }
+
+  const authPath = path.join(os.homedir(), '.codex', 'auth.json')
+  if (existsSync(authPath)) {
+    return {
+      id: 'auth',
+      label: 'Auth',
+      status: 'ok',
+      summary: 'Codex auth file is available.',
+      detail: authPath,
+    }
+  }
+
+  return {
+    id: 'auth',
+    label: 'Auth',
+    status: 'warning',
+    summary: 'Codex auth was not detected.',
+    detail: 'Set OPENAI_API_KEY/CODEX_API_KEY or sign in with the Codex CLI.',
+    fixCommand: 'codex login',
+  }
+}
+
+function checkGitStatus(workspace: WorkspaceRecord): WorkspaceHealthCheck {
+  if (!existsSync(workspace.codexWorkdir)) {
+    return {
+      id: 'git',
+      label: 'Git',
+      status: 'error',
+      summary: 'Workspace directory does not exist.',
+      detail: workspace.codexWorkdir,
+      fixCommand: `mkdir ${quoteCommandArg(workspace.codexWorkdir)}`,
+    }
+  }
+
+  const repoCheck = runTool(
+    'git',
+    ['rev-parse', '--is-inside-work-tree'],
+    workspace.codexWorkdir,
+  )
+  if (repoCheck.status !== 0) {
+    return {
+      id: 'git',
+      label: 'Git',
+      status: 'warning',
+      summary: 'Workspace is not a git repository.',
+      detail: commandOutput(repoCheck),
+      fixCommand: `git -C ${quoteCommandArg(workspace.codexWorkdir)} init`,
+    }
+  }
+
+  const status = runTool('git', ['status', '--short'], workspace.codexWorkdir)
+  const output = commandOutput(status)
+  return {
+    id: 'git',
+    label: 'Git',
+    status: output ? 'warning' : 'ok',
+    summary: output
+      ? 'Git repository has local changes.'
+      : 'Git repository is clean.',
+    detail: output,
+  }
+}
+
+function checkNodeVersion(): WorkspaceHealthCheck {
+  const version = process.version
+  const major = Number(version.replace(/^v/, '').split('.')[0] ?? 0)
+  const supported = Number.isFinite(major) && major >= 20
+
+  return {
+    id: 'node',
+    label: 'Node',
+    status: supported ? 'ok' : 'error',
+    summary: supported ? `${version} is supported.` : `${version} is too old.`,
+    detail: 'CodexClaw expects Node.js 20 or newer.',
+    fixCommand: supported ? undefined : 'Install Node.js 20 or newer.',
+  }
+}
+
+function checkPnpm(workspace: WorkspaceRecord): WorkspaceHealthCheck {
+  const cwd = existsSync(workspace.codexWorkdir)
+    ? workspace.codexWorkdir
+    : process.cwd()
+  const result = runTool('pnpm', ['--version'], cwd)
+  const output = commandOutput(result)
+
+  if (result.status === 0) {
+    return {
+      id: 'pnpm',
+      label: 'pnpm',
+      status: 'ok',
+      summary: `pnpm ${output} is available.`,
+    }
+  }
+
+  return {
+    id: 'pnpm',
+    label: 'pnpm',
+    status: 'warning',
+    summary: 'pnpm was not found on PATH.',
+    detail: output,
+    fixCommand: 'corepack enable pnpm',
+  }
+}
+
+function checkStatePath(workspace: WorkspaceRecord): WorkspaceHealthCheck {
+  const tempPath = path.join(
+    workspace.stateDir,
+    `.health-${process.pid}-${Date.now()}.tmp`,
+  )
+
+  try {
+    mkdirSync(workspace.stateDir, { recursive: true })
+    writeFileSync(tempPath, 'ok')
+    rmSync(tempPath, { force: true })
+    return {
+      id: 'state-path',
+      label: 'State path',
+      status: 'ok',
+      summary: 'State path is writable.',
+      detail: workspace.stateDir,
+    }
+  } catch (err) {
+    return {
+      id: 'state-path',
+      label: 'State path',
+      status: 'error',
+      summary: 'State path is not writable.',
+      detail: err instanceof Error ? err.message : String(err),
+      fixCommand: `mkdir ${quoteCommandArg(workspace.stateDir)}`,
+    }
+  } finally {
+    rmSync(tempPath, { force: true })
+  }
+}
+
+export function getCodexWorkspaceHealth(
+  workspaceId?: string,
+): WorkspaceHealthPayload {
+  const store = readWorkspaceStore()
+  const workspace = workspaceId
+    ? findWorkspace(store, workspaceId)
+    : getActiveWorkspace()
+
+  if (!workspace) {
+    throw new Error(`Workspace not found: ${workspaceId}`)
+  }
+
+  const checks = [
+    checkCodexCli(workspace),
+    checkCodexAuth(),
+    checkGitStatus(workspace),
+    checkNodeVersion(),
+    checkPnpm(workspace),
+    checkStatePath(workspace),
+  ]
+
+  return {
+    ok: checks.every((check) => check.status !== 'error'),
+    workspaceId: workspace.id,
+    checkedAt: Date.now(),
+    checks,
+  }
+}
+
+export function listCodexWorkspaces() {
+  const store = readWorkspaceStore()
+  return {
+    activeWorkspaceId: store.activeWorkspaceId,
+    workspaces: store.workspaces,
+    health: getCodexWorkspaceHealth(store.activeWorkspaceId),
+  }
+}
+
+export function createCodexWorkspace(input: WorkspaceInput) {
+  const store = readWorkspaceStore()
+  const now = Date.now()
+  const activeWorkspace = getActiveWorkspace()
+  const name = normalizeRequiredString(input.name, 'Workspace')
+  const id = workspaceIdFromName(name, store.workspaces)
+  const workspace = normalizeWorkspaceRecord(
+    {
+      id,
+      name,
+      codexCommand: input.codexCommand,
+      codexSandbox: input.codexSandbox,
+      codexWorkdir: input.codexWorkdir,
+      stateDir: input.stateDir,
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      ...activeWorkspace,
+      id,
+      name,
+      createdAt: now,
+      updatedAt: now,
+    },
+  )
+
+  store.workspaces.push(workspace)
+  if (input.active) store.activeWorkspaceId = workspace.id
+  writeWorkspaceStore(store)
+
+  return {
+    ok: true,
+    activeWorkspaceId: store.activeWorkspaceId,
+    workspace,
+    health: getCodexWorkspaceHealth(store.activeWorkspaceId),
+  }
+}
+
+export function patchCodexWorkspace(input: WorkspaceInput) {
+  const id = input.id?.trim()
+  if (!id) throw new Error('workspace id required')
+
+  const store = readWorkspaceStore()
+  const index = store.workspaces.findIndex((workspace) => workspace.id === id)
+  if (index < 0) throw new Error(`Workspace not found: ${id}`)
+
+  const existing = store.workspaces[index]
+  const nextWorkspace = normalizeWorkspaceRecord(
+    {
+      ...existing,
+      name: input.name ?? existing.name,
+      codexCommand: input.codexCommand ?? existing.codexCommand,
+      codexSandbox: input.codexSandbox ?? existing.codexSandbox,
+      codexWorkdir: input.codexWorkdir ?? existing.codexWorkdir,
+      stateDir: input.stateDir ?? existing.stateDir,
+      updatedAt: Date.now(),
+    },
+    existing,
+  )
+
+  store.workspaces[index] = nextWorkspace
+  if (input.active) store.activeWorkspaceId = nextWorkspace.id
+  writeWorkspaceStore(store)
+
+  return {
+    ok: true,
+    activeWorkspaceId: store.activeWorkspaceId,
+    workspace: nextWorkspace,
+    health: getCodexWorkspaceHealth(store.activeWorkspaceId),
+  }
+}
+
+export function deleteCodexWorkspace(id: string) {
+  const workspaceId = id.trim()
+  if (!workspaceId) throw new Error('workspace id required')
+  if (workspaceId === defaultWorkspaceId) {
+    throw new Error('Default workspace cannot be removed.')
+  }
+
+  const store = readWorkspaceStore()
+  const index = store.workspaces.findIndex(
+    (workspace) => workspace.id === workspaceId,
+  )
+  if (index < 0) throw new Error(`Workspace not found: ${workspaceId}`)
+
+  store.workspaces.splice(index, 1)
+  if (store.activeWorkspaceId === workspaceId) {
+    store.activeWorkspaceId = defaultWorkspaceId
+  }
+  writeWorkspaceStore(store)
+
+  return {
+    ok: true,
+    activeWorkspaceId: store.activeWorkspaceId,
+    health: getCodexWorkspaceHealth(store.activeWorkspaceId),
+  }
+}
+
+export function activateCodexWorkspace(id: string) {
+  const workspaceId = id.trim()
+  const store = readWorkspaceStore()
+  const workspace = findWorkspace(store, workspaceId)
+  if (!workspace) throw new Error(`Workspace not found: ${workspaceId}`)
+
+  store.activeWorkspaceId = workspace.id
+  writeWorkspaceStore(store)
+
+  return {
+    ok: true,
+    activeWorkspaceId: store.activeWorkspaceId,
+    workspace,
+    health: getCodexWorkspaceHealth(store.activeWorkspaceId),
+  }
+}
+
 export function getCodexPaths(): CodexPathsPayload {
   const stateDir = getStateDir()
   return {
@@ -852,6 +1478,8 @@ export function getCodexPaths(): CodexPathsPayload {
     stateDir,
     sessionsDir: stateDir,
     storePath: getStorePath(),
+    workspacesStorePath: getWorkspacesStorePath(),
+    workspace: getActiveWorkspace(),
   }
 }
 
@@ -931,10 +1559,7 @@ export function listCodexSessions() {
   }
 }
 
-export function patchCodexSession(input: {
-  key?: string
-  label?: string
-}) {
+export function patchCodexSession(input: { key?: string; label?: string }) {
   const session = ensureSession(input.key || randomUUID(), input.label)
   return {
     ok: true,
@@ -965,31 +1590,21 @@ export function deleteCodexSession(key: string) {
 }
 
 export function codexCliCheck() {
-  const command = getCodexCommand()
-  const result =
-    process.platform === 'win32'
-      ? spawnSync(`${command} --version`, {
-          cwd: getCodexWorkdir(),
-          env: process.env,
-          stdio: 'pipe',
-          shell: true,
-          encoding: 'utf8',
-        })
-      : spawnSync(resolveCodexCommand(getCodexCommand()), ['--version'], {
-          cwd: getCodexWorkdir(),
-          env: process.env,
-          stdio: 'pipe',
-          encoding: 'utf8',
-        })
+  const health = getCodexWorkspaceHealth()
+  const codexCheck = health.checks.find((check) => check.id === 'codex-cli')
 
-  if (result.status === 0) {
-    return { ok: true }
+  if (codexCheck?.status !== 'error') {
+    return { ok: true, health }
   }
 
-  const detail = result.stderr || result.stdout || result.error?.message || ''
   throw new Error(
-    detail.trim() ||
-      `Codex CLI command failed. Set CODEX_CLI_COMMAND if ${command} is not correct.`,
+    codexCheck.detail ||
+      'Codex CLI command failed. Set this workspace to a working Codex CLI command.',
   )
 }
 
+export function resetCodexServerStateForTests() {
+  storeCache = null
+  workspaceStoreCache = null
+  stateVersion = 0
+}

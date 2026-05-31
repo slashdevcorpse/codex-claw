@@ -5,10 +5,9 @@ import { codexCliCheck } from '../../server/codex-cli'
 export const Route = createFileRoute('/api/ping')({
   server: {
     handlers: {
-      GET: async () => {
+      GET: () => {
         try {
-          await codexCliCheck()
-          return json({ ok: true })
+          return json(codexCliCheck())
         } catch (err) {
           return json(
             {
