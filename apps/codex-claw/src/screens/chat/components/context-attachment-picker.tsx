@@ -118,7 +118,7 @@ export function ContextAttachmentSummary({
         >
           <HugeiconsIcon
             icon={attachmentIcon(attachment)}
-            size={13}
+            size={20}
             strokeWidth={1.5}
             className="shrink-0"
           />
@@ -132,7 +132,7 @@ export function ContextAttachmentSummary({
             onClick={() => onRemove(attachment.id)}
             aria-label={'Remove context ' + attachment.title}
           >
-            <HugeiconsIcon icon={Cancel01Icon} size={12} strokeWidth={1.5} />
+            <HugeiconsIcon icon={Cancel01Icon} size={20} strokeWidth={1.5} />
           </button>
         </span>
       ))}
