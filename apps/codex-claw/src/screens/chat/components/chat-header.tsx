@@ -1,6 +1,10 @@
 import { memo } from 'react'
 import { HugeiconsIcon } from '@hugeicons/react'
-import { GitBranchIcon, Menu01Icon } from '@hugeicons/core-free-icons'
+import {
+  GitBranchIcon,
+  Menu01Icon,
+  Settings01Icon,
+} from '@hugeicons/core-free-icons'
 import { ContextMeter } from './context-meter'
 import { Button } from '@/components/ui/button'
 import { ExportMenu } from '@/components/export-menu'
@@ -19,6 +23,8 @@ type ChatHeaderProps = {
   showExport?: boolean
   gitReviewOpen?: boolean
   onToggleGitReview?: () => void
+  mcpHealthOpen?: boolean
+  onToggleMcpHealth?: () => void
 }
 
 function ChatHeaderComponent({
@@ -33,6 +39,8 @@ function ChatHeaderComponent({
   showExport = true,
   gitReviewOpen = false,
   onToggleGitReview,
+  mcpHealthOpen = false,
+  onToggleMcpHealth,
 }: ChatHeaderProps) {
   return (
     <div
@@ -47,7 +55,7 @@ function ChatHeaderComponent({
           className="mr-2 text-primary-800 hover:bg-primary-100"
           aria-label="Open sidebar"
         >
-          <HugeiconsIcon icon={Menu01Icon} size={18} strokeWidth={1.6} />
+          <HugeiconsIcon icon={Menu01Icon} size={20} strokeWidth={1.5} />
         </Button>
       ) : null}
       <div className="flex-1 min-w-0 text-sm font-medium truncate">
@@ -62,7 +70,18 @@ function ChatHeaderComponent({
             className={gitReviewOpen ? 'bg-primary-100' : undefined}
             aria-label="Review local changes"
           >
-            <HugeiconsIcon icon={GitBranchIcon} size={18} strokeWidth={1.5} />
+            <HugeiconsIcon icon={GitBranchIcon} size={20} strokeWidth={1.5} />
+          </Button>
+        ) : null}
+        {onToggleMcpHealth ? (
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            onClick={onToggleMcpHealth}
+            className={mcpHealthOpen ? 'bg-primary-100' : undefined}
+            aria-label="Inspect MCP tools"
+          >
+            <HugeiconsIcon icon={Settings01Icon} size={20} strokeWidth={1.5} />
           </Button>
         ) : null}
         {showExport ? (

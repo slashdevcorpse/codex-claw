@@ -24,6 +24,7 @@ import { ChatHeader } from './components/chat-header'
 import { ChatMessageList } from './components/chat-message-list'
 import { ChatComposer } from './components/chat-composer'
 import { GitReviewPanel } from './components/git-review-panel'
+import { McpHealthPanel } from './components/mcp-health-panel'
 import { GatewayStatusMessage } from './components/gateway-status-message'
 import {
   hasPendingGeneration,
@@ -71,6 +72,7 @@ export function ChatScreen({
   const [creatingSession, setCreatingSession] = useState(false)
   const [isRedirecting, setIsRedirecting] = useState(false)
   const [gitReviewOpen, setGitReviewOpen] = useState(false)
+  const [mcpHealthOpen, setMcpHealthOpen] = useState(false)
   const { headerRef, composerRef, mainRef, pinGroupMinHeight, headerHeight } =
     useChatMeasurements()
   const [waitingForResponse, setWaitingForResponse] = useState(
@@ -629,6 +631,12 @@ export function ChatScreen({
             maxTokens={activeSession?.contextTokens}
             gitReviewOpen={gitReviewOpen}
             onToggleGitReview={() => setGitReviewOpen((current) => !current)}
+            mcpHealthOpen={mcpHealthOpen}
+            onToggleMcpHealth={() => setMcpHealthOpen((current) => !current)}
+          />
+          <McpHealthPanel
+            open={mcpHealthOpen}
+            onClose={() => setMcpHealthOpen(false)}
           />
           <GitReviewPanel
             open={gitReviewOpen}

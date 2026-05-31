@@ -20,6 +20,7 @@ import { Route as ApiSendRouteImport } from './routes/api/send'
 import { Route as ApiRepoContextRouteImport } from './routes/api/repo-context'
 import { Route as ApiPingRouteImport } from './routes/api/ping'
 import { Route as ApiPathsRouteImport } from './routes/api/paths'
+import { Route as ApiMcpHealthRouteImport } from './routes/api/mcp-health'
 import { Route as ApiHistoryRouteImport } from './routes/api/history'
 import { Route as ApiGitReviewRouteImport } from './routes/api/git-review'
 
@@ -78,6 +79,11 @@ const ApiPathsRoute = ApiPathsRouteImport.update({
   path: '/api/paths',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiMcpHealthRoute = ApiMcpHealthRouteImport.update({
+  id: '/api/mcp-health',
+  path: '/api/mcp-health',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiHistoryRoute = ApiHistoryRouteImport.update({
   id: '/api/history',
   path: '/api/history',
@@ -95,6 +101,7 @@ export interface FileRoutesByFullPath {
   '/new': typeof NewRoute
   '/api/git-review': typeof ApiGitReviewRoute
   '/api/history': typeof ApiHistoryRoute
+  '/api/mcp-health': typeof ApiMcpHealthRoute
   '/api/paths': typeof ApiPathsRoute
   '/api/ping': typeof ApiPingRoute
   '/api/repo-context': typeof ApiRepoContextRoute
@@ -110,6 +117,7 @@ export interface FileRoutesByTo {
   '/new': typeof NewRoute
   '/api/git-review': typeof ApiGitReviewRoute
   '/api/history': typeof ApiHistoryRoute
+  '/api/mcp-health': typeof ApiMcpHealthRoute
   '/api/paths': typeof ApiPathsRoute
   '/api/ping': typeof ApiPingRoute
   '/api/repo-context': typeof ApiRepoContextRoute
@@ -126,6 +134,7 @@ export interface FileRoutesById {
   '/new': typeof NewRoute
   '/api/git-review': typeof ApiGitReviewRoute
   '/api/history': typeof ApiHistoryRoute
+  '/api/mcp-health': typeof ApiMcpHealthRoute
   '/api/paths': typeof ApiPathsRoute
   '/api/ping': typeof ApiPingRoute
   '/api/repo-context': typeof ApiRepoContextRoute
@@ -143,6 +152,7 @@ export interface FileRouteTypes {
     | '/new'
     | '/api/git-review'
     | '/api/history'
+    | '/api/mcp-health'
     | '/api/paths'
     | '/api/ping'
     | '/api/repo-context'
@@ -158,6 +168,7 @@ export interface FileRouteTypes {
     | '/new'
     | '/api/git-review'
     | '/api/history'
+    | '/api/mcp-health'
     | '/api/paths'
     | '/api/ping'
     | '/api/repo-context'
@@ -173,6 +184,7 @@ export interface FileRouteTypes {
     | '/new'
     | '/api/git-review'
     | '/api/history'
+    | '/api/mcp-health'
     | '/api/paths'
     | '/api/ping'
     | '/api/repo-context'
@@ -189,6 +201,7 @@ export interface RootRouteChildren {
   NewRoute: typeof NewRoute
   ApiGitReviewRoute: typeof ApiGitReviewRoute
   ApiHistoryRoute: typeof ApiHistoryRoute
+  ApiMcpHealthRoute: typeof ApiMcpHealthRoute
   ApiPathsRoute: typeof ApiPathsRoute
   ApiPingRoute: typeof ApiPingRoute
   ApiRepoContextRoute: typeof ApiRepoContextRoute
@@ -278,6 +291,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPathsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/mcp-health': {
+      id: '/api/mcp-health'
+      path: '/api/mcp-health'
+      fullPath: '/api/mcp-health'
+      preLoaderRoute: typeof ApiMcpHealthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/history': {
       id: '/api/history'
       path: '/api/history'
@@ -301,6 +321,7 @@ const rootRouteChildren: RootRouteChildren = {
   NewRoute: NewRoute,
   ApiGitReviewRoute: ApiGitReviewRoute,
   ApiHistoryRoute: ApiHistoryRoute,
+  ApiMcpHealthRoute: ApiMcpHealthRoute,
   ApiPathsRoute: ApiPathsRoute,
   ApiPingRoute: ApiPingRoute,
   ApiRepoContextRoute: ApiRepoContextRoute,
