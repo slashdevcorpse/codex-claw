@@ -23,6 +23,7 @@ import { ChatSidebar } from './components/chat-sidebar'
 import { ChatHeader } from './components/chat-header'
 import { ChatMessageList } from './components/chat-message-list'
 import { ChatComposer } from './components/chat-composer'
+import { GitReviewPanel } from './components/git-review-panel'
 import { GatewayStatusMessage } from './components/gateway-status-message'
 import {
   hasPendingGeneration,
@@ -69,6 +70,7 @@ export function ChatScreen({
   const [sending, setSending] = useState(false)
   const [creatingSession, setCreatingSession] = useState(false)
   const [isRedirecting, setIsRedirecting] = useState(false)
+  const [gitReviewOpen, setGitReviewOpen] = useState(false)
   const { headerRef, composerRef, mainRef, pinGroupMinHeight, headerHeight } =
     useChatMeasurements()
   const [waitingForResponse, setWaitingForResponse] = useState(
@@ -615,6 +617,12 @@ export function ChatScreen({
             showExport={!isNewChat}
             usedTokens={activeSession?.totalTokens}
             maxTokens={activeSession?.contextTokens}
+            gitReviewOpen={gitReviewOpen}
+            onToggleGitReview={() => setGitReviewOpen((current) => !current)}
+          />
+          <GitReviewPanel
+            open={gitReviewOpen}
+            onClose={() => setGitReviewOpen(false)}
           />
 
           {hideUi ? null : (
