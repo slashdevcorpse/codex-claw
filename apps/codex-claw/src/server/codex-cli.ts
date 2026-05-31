@@ -393,6 +393,22 @@ function normalizeWorkspaceRecord(
   value: Partial<WorkspaceRecord>,
   fallback: WorkspaceRecord,
 ): WorkspaceRecord {
+  const codexSandbox = normalizeSandbox(
+    value.codexSandbox || fallback.codexSandbox,
+  )
+  const runProfile =
+    typeof value.runProfile === 'string'
+      ? normalizeRunProfile(value.runProfile)
+      : value.codexSandbox
+        ? profileFromSandbox(codexSandbox)
+        : fallback.runProfile
+  const codexApproval = normalizeApproval(
+    value.codexApproval ||
+      (value.codexSandbox || value.runProfile
+        ? runProfiles[runProfile].approval
+        : fallback.codexApproval),
+  )
+
   return {
     id: normalizeRequiredString(value.id, fallback.id),
     name: normalizeRequiredString(value.name, fallback.name),
@@ -400,11 +416,9 @@ function normalizeWorkspaceRecord(
       value.codexCommand,
       fallback.codexCommand,
     ),
-    codexSandbox: normalizeSandbox(value.codexSandbox || fallback.codexSandbox),
-    codexApproval: normalizeApproval(
-      value.codexApproval || fallback.codexApproval,
-    ),
-    runProfile: normalizeRunProfile(value.runProfile || fallback.runProfile),
+    codexSandbox,
+    codexApproval,
+    runProfile,
     codexWorkdir: normalizePath(value.codexWorkdir, fallback.codexWorkdir),
     stateDir: normalizePath(value.stateDir, fallback.stateDir),
     createdAt:
