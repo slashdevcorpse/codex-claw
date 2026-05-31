@@ -1,8 +1,10 @@
+import { Buffer } from 'node:buffer'
 import { randomUUID } from 'node:crypto'
 import { spawn, spawnSync } from 'node:child_process'
 import {
   existsSync,
   mkdirSync,
+  mkdtempSync,
   readFileSync,
   renameSync,
   rmSync,
@@ -127,6 +129,13 @@ type ProcessedCodexJsonLine =
       kind: 'assistant-final'
       text: string
     }
+
+const supportedImageMimeTypes = new Set([
+  'image/png',
+  'image/jpeg',
+  'image/gif',
+  'image/webp',
+])
 
 const listeners = new Map<string, Set<(event: CodexStreamEvent) => void>>()
 let storeCache: SessionStore | null = null
@@ -407,9 +416,13 @@ function contentFromUserInput(input: SendCodexPromptInput): Array<MessageContent
 
 function isSupportedImageAttachment(attachment: AttachmentInput) {
   return (
-    attachment.mimeType.startsWith('image/') &&
+    isSupportedCodexImageMimeType(attachment.mimeType) &&
     attachment.content.trim().length > 0
   )
+}
+
+export function isSupportedCodexImageMimeType(mimeType: string) {
+  return supportedImageMimeTypes.has(mimeType.trim().toLowerCase())
 }
 
 function attachmentExtension(mimeType: string) {
@@ -432,31 +445,43 @@ function prepareAttachmentFiles(
   runId: string,
   attachments: Array<AttachmentInput> | undefined,
 ): PreparedAttachmentFiles {
-  const supported = (attachments ?? []).filter(isSupportedImageAttachment)
-  if (supported.length === 0) {
+  const imageAttachments = attachments ?? []
+  if (imageAttachments.length === 0) {
     return {
       imagePaths: [],
       cleanup() {},
     }
   }
 
-  const attachmentsDir = path.join(getStateDir(), 'runs', runId, 'attachments')
-  mkdirSync(attachmentsDir, { recursive: true })
+  const attachmentsDir = mkdtempSync(
+    path.join(os.tmpdir(), `codex-claw-${runId}-`),
+  )
   const imagePaths: Array<string> = []
 
-  supported.forEach((attachment, index) => {
-    const imagePath = path.join(
-      attachmentsDir,
-      `image-${index + 1}${attachmentExtension(attachment.mimeType)}`,
-    )
-    writeFileSync(imagePath, Buffer.from(attachment.content, 'base64'))
-    imagePaths.push(imagePath)
-  })
+  try {
+    imageAttachments.forEach((attachment, index) => {
+      if (!isSupportedImageAttachment(attachment)) {
+        throw new Error(
+          'Unsupported attachment type. Please use PNG, JPG, GIF, or WebP images.',
+        )
+      }
+
+      const imagePath = path.join(
+        attachmentsDir,
+        `image-${index + 1}${attachmentExtension(attachment.mimeType)}`,
+      )
+      writeFileSync(imagePath, Buffer.from(attachment.content, 'base64'))
+      imagePaths.push(imagePath)
+    })
+  } catch (error) {
+    rmSync(attachmentsDir, { recursive: true, force: true })
+    throw error
+  }
 
   return {
     imagePaths,
     cleanup() {
-      rmSync(path.dirname(attachmentsDir), { recursive: true, force: true })
+      rmSync(attachmentsDir, { recursive: true, force: true })
     },
   }
 }
@@ -518,7 +543,9 @@ function isAssistantJsonEvent(event: CodexExecJsonEvent) {
   )
 }
 
-function processCodexJsonLine(line: string): ProcessedCodexJsonLine | null {
+export function processCodexJsonLine(
+  line: string,
+): ProcessedCodexJsonLine | null {
   if (!line.startsWith('{')) return null
   try {
     const event = JSON.parse(line) as CodexExecJsonEvent
@@ -553,7 +580,7 @@ function processCodexJsonLine(line: string): ProcessedCodexJsonLine | null {
   }
 }
 
-function mergeAssistantText(
+export function mergeAssistantText(
   currentText: string,
   incomingText: string,
   kind: ProcessedCodexJsonLine['kind'],
@@ -649,7 +676,7 @@ function runCodexExec(
         emitAssistantDelta(assistantText)
         continue
       }
-      appendFinalText(assistantText)
+      if (!emittedFinal) appendFinalText(assistantText)
     }
   })
 
@@ -686,11 +713,18 @@ function runCodexExec(
         trailing.text,
         trailing.kind,
       )
-      appendFinalText(assistantText)
-      return
+      if (!emittedFinal && (trailing.kind === 'assistant-final' || code === 0)) {
+        appendFinalText(assistantText)
+        return
+      }
+      if (emittedFinal && code === 0) return
     }
 
     if (emittedFinal && code === 0) return
+    if (code === 0 && assistantText) {
+      appendFinalText(assistantText)
+      return
+    }
 
     const detail = stderrBuffer.trim()
     const fallback =
@@ -833,9 +867,10 @@ export function deleteCodexSession(key: string) {
 }
 
 export function codexCliCheck() {
+  const command = getCodexCommand()
   const result =
     process.platform === 'win32'
-      ? spawnSync(`${getCodexCommand()} --version`, {
+      ? spawnSync(`${command} --version`, {
           cwd: getCodexWorkdir(),
           env: process.env,
           stdio: 'pipe',
