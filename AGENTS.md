@@ -2,17 +2,17 @@
 
 ## Overview
 
-WebClaw app lives in `apps/webclaw` and is built with React + TanStack Router + Tailwind CSS v4.
+CodexClaw app lives in `apps/codex-claw` and is built with React + TanStack Router + Tailwind CSS v4.
 
 ## Commands
 
-- `pnpm -C apps/webclaw dev` — Start development server
-- `pnpm -C apps/webclaw build` — Build for production
-- `pnpm -C apps/webclaw preview` — Preview production build
-- `pnpm -C apps/webclaw test` — Run tests
-- `pnpm -C apps/webclaw lint` — Run ESLint
-- `pnpm -C apps/webclaw format` — Run Prettier
-- `pnpm -C apps/webclaw check` — Format and lint fix
+- `pnpm -C apps/codex-claw dev` — Start development server
+- `pnpm -C apps/codex-claw build` — Build for production
+- `pnpm -C apps/codex-claw preview` — Preview production build
+- `pnpm -C apps/codex-claw test` — Run tests
+- `pnpm -C apps/codex-claw lint` — Run ESLint
+- `pnpm -C apps/codex-claw format` — Run Prettier
+- `pnpm -C apps/codex-claw check` — Format and lint fix
 
 ## Conventions
 
@@ -26,9 +26,9 @@ WebClaw app lives in `apps/webclaw` and is built with React + TanStack Router + 
 
 ### Routing & Structure
 
-- Routes live in `apps/webclaw/src/routes` using TanStack file routing.
-- Global styles and CSS variables live in `apps/webclaw/src/styles.css`.
-- Local environment values go in `apps/webclaw/.env.local`.
+- Routes live in `apps/codex-claw/src/routes` using TanStack file routing.
+- Global styles and CSS variables live in `apps/codex-claw/src/styles.css`.
+- Local environment values go in `apps/codex-claw/.env.local`.
 
 ### UI & Styling
 

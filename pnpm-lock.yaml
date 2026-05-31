@@ -49,7 +49,7 @@ importers:
         specifier: ^4.36.0
         version: 4.63.0
 
-  apps/webclaw:
+  apps/codex-claw:
     dependencies:
       '@base-ui/react':
         specifier: ^1.1.0
@@ -173,7 +173,7 @@ importers:
         specifier: ^5.1.0
         version: 5.1.0
 
-  packages/webclaw: {}
+  packages/codex-claw: {}
 
 packages:
 
