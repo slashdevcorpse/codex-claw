@@ -8,10 +8,9 @@ import {
   Settings01Icon,
 } from '@hugeicons/core-free-icons'
 import { ContextMeter } from './context-meter'
+import type { ExportFormat } from '@/hooks/use-export'
 import { Button } from '@/components/ui/button'
 import { ExportMenu } from '@/components/export-menu'
-
-type ExportFormat = 'markdown' | 'json' | 'text'
 
 type ChatHeaderProps = {
   activeTitle: string
