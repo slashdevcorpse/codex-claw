@@ -18,7 +18,7 @@ See [BETA_WORKFLOW.md](BETA_WORKFLOW.md) for the public beta entry gates, valida
 
 1. npm alpha publish
    - Confirm npm auth with <code>npm whoami</code>.
-   - Publish <code>0.1.0-alpha.0</code> with the alpha dist-tag.
+   - Publish <code>0.1.0-alpha.1</code> with the alpha dist-tag.
    - Run <code>pnpm smoke:codex-claw:npm</code> after publish.
 
 2. Beta release evidence

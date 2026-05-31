@@ -74,7 +74,7 @@ codex exec "Reply with: ready"
 
 ## NPM Alpha
 
-The public npm package target is <code>codex-claw@0.1.0-alpha.0</code>.
+The public npm package target is <code>codex-claw@0.1.0-alpha.1</code>.
 
 After the first npm alpha publish, start without a global install:
 
