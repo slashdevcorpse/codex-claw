@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { acquireGatewayClient, gatewayRpcShared } from '../../server/gateway'
+import { subscribeCodexEvents } from '../../server/codex-cli'
 
 type StreamEventPayload = {
   event: string
@@ -17,7 +17,7 @@ export const Route = createFileRoute('/api/stream')({
         const friendlyId = url.searchParams.get('friendlyId')?.trim() || ''
         const encoder = new TextEncoder()
 
-        let releaseClient: (() => void) | null = null
+        let unsubscribe: (() => void) | null = null
         let closed = false
 
         const stream = new ReadableStream({
@@ -37,42 +37,8 @@ export const Route = createFileRoute('/api/stream')({
               controller.enqueue(encoder.encode('event: ping\ndata: {}\n\n'))
             }, 15000)
 
-            const key = sessionKey || friendlyId
-            if (key) {
-              void acquireGatewayClient(key, {
-                onEvent(event) {
-                  send({
-                    event: event.event,
-                    payload: event.payload,
-                    seq: event.seq,
-                    stateVersion: event.stateVersion,
-                  })
-                },
-                onError(error) {
-                  send({ event: 'error', payload: error.message })
-                },
-              })
-                .then((handle) => {
-                  if (closed) {
-                    handle.release()
-                    return
-                  }
-                  releaseClient = handle.release
-                  if (sessionKey) {
-                    void gatewayRpcShared(
-                      'chat.history',
-                      { sessionKey, limit: 1 },
-                      sessionKey,
-                    )
-                  }
-                })
-                .catch((error: unknown) => {
-                  if (closed) return
-                  const message =
-                    error instanceof Error ? error.message : String(error)
-                  send({ event: 'error', payload: message })
-                })
-            }
+            const key = sessionKey || friendlyId || 'main'
+            unsubscribe = subscribeCodexEvents(key, send)
 
             request.signal.addEventListener(
               'abort',
@@ -80,7 +46,7 @@ export const Route = createFileRoute('/api/stream')({
                 if (closed) return
                 closed = true
                 clearInterval(heartbeat)
-                releaseClient?.()
+                unsubscribe?.()
                 try {
                   controller.close()
                 } catch {
@@ -93,7 +59,7 @@ export const Route = createFileRoute('/api/stream')({
           cancel() {
             if (closed) return
             closed = true
-            releaseClient?.()
+            unsubscribe?.()
           },
         })
 

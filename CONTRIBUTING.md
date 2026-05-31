@@ -1,7 +1,7 @@
 Contributing
 
-WebClaw is intentionally simple.
-The goal is to build the best web client for openclaw, not the biggest one.
+Codex Claw is intentionally simple.
+The goal is to build the best local web client for Codex CLI sessions, not the biggest one.
 
 Before opening a PR
 

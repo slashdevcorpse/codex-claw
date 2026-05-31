@@ -48,7 +48,7 @@ export async function fetchGatewayStatus(): Promise<GatewayStatusResponse> {
     return (await res.json()) as GatewayStatusResponse
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') {
-      throw new Error('Gateway check timed out')
+      throw new Error('Codex CLI check timed out')
     }
     throw err
   } finally {

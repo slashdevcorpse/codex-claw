@@ -1,8 +1,8 @@
-export type WebClawIconBigProps = {
+export type CodexClawIconBigProps = {
   className?: string
 }
 
-export function WebClawIconBig({ className }: WebClawIconBigProps) {
+export function CodexClawIconBig({ className }: CodexClawIconBigProps) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
