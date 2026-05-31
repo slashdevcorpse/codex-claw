@@ -8,6 +8,7 @@ import {
   readFileSync,
   renameSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from 'node:fs'
 import os from 'node:os'
@@ -66,6 +67,32 @@ type SessionRecord = {
 type SessionStore = {
   version: 1
   sessions: Array<SessionRecord>
+}
+
+type CodexArtifactType =
+  | 'file'
+  | 'patch'
+  | 'terminal-log'
+  | 'export'
+  | 'package'
+  | 'image'
+
+type CodexArtifactRecord = {
+  id: string
+  sessionKey: string
+  runId?: string
+  path: string
+  redactedPath: string
+  type: CodexArtifactType
+  createdAt: number
+  safeToOpen: boolean
+  size?: number
+  source: 'command-log' | 'detected-file' | 'export-manifest'
+}
+
+type ArtifactStore = {
+  version: 1
+  artifacts: Array<CodexArtifactRecord>
 }
 
 type SessionFilter = 'all' | 'recent' | 'failed' | 'tagged' | 'archived'
@@ -313,6 +340,7 @@ const runProfiles: Record<
 let storeCache: SessionStore | null = null
 let workspaceStoreCache: WorkspaceStore | null = null
 let taskStoreCache: TaskStore | null = null
+let artifactStoreCache: ArtifactStore | null = null
 let stateVersion = 0
 const runningTasks = new Map<string, ReturnType<typeof spawn>>()
 
@@ -336,6 +364,14 @@ function getStorePath() {
 
 function getTaskStorePath() {
   return path.join(getStateDir(), 'tasks.json')
+}
+
+function getArtifactStorePath() {
+  return path.join(getStateDir(), 'artifacts.json')
+}
+
+function getArtifactsDir() {
+  return path.join(getStateDir(), 'artifacts')
 }
 
 function getCodexCommand() {
@@ -725,6 +761,55 @@ function writeTaskStore(store: TaskStore) {
   stateVersion += 1
 }
 
+function isArtifactStore(value: unknown): value is ArtifactStore {
+  if (!value || typeof value !== 'object') return false
+  const candidate = value as Record<string, unknown>
+  return candidate.version === 1 && Array.isArray(candidate.artifacts)
+}
+
+function isArtifactRecord(value: unknown): value is CodexArtifactRecord {
+  if (!value || typeof value !== 'object') return false
+  const candidate = value as Record<string, unknown>
+  return (
+    typeof candidate.id === 'string' &&
+    typeof candidate.sessionKey === 'string' &&
+    typeof candidate.path === 'string' &&
+    typeof candidate.redactedPath === 'string' &&
+    typeof candidate.type === 'string' &&
+    typeof candidate.createdAt === 'number' &&
+    typeof candidate.safeToOpen === 'boolean' &&
+    typeof candidate.source === 'string'
+  )
+}
+
+function readArtifactStore() {
+  if (artifactStoreCache) return artifactStoreCache
+  const artifactStorePath = getArtifactStorePath()
+  try {
+    const parsed = JSON.parse(readFileSync(artifactStorePath, 'utf8')) as unknown
+    artifactStoreCache = isArtifactStore(parsed)
+      ? {
+          version: 1,
+          artifacts: parsed.artifacts.filter(isArtifactRecord),
+        }
+      : { version: 1, artifacts: [] }
+  } catch {
+    artifactStoreCache = { version: 1, artifacts: [] }
+  }
+  return artifactStoreCache
+}
+
+function writeArtifactStore(store: ArtifactStore) {
+  const artifactStorePath = getArtifactStorePath()
+  mkdirSync(path.dirname(artifactStorePath), { recursive: true })
+  const tempPath =
+    artifactStorePath + '.' + process.pid + '.' + Date.now() + '.tmp'
+  writeFileSync(tempPath, JSON.stringify(store, null, 2))
+  renameSync(tempPath, artifactStorePath)
+  artifactStoreCache = store
+  stateVersion += 1
+}
+
 function taskDuration(task: CodexTaskRecord, now = Date.now()) {
   const startedAt = task.startedAt ?? task.createdAt
   const finishedAt = task.finishedAt ?? now
@@ -998,6 +1083,7 @@ function appendMessage(session: SessionRecord, message: CodexMessage) {
     session.derivedTitle = titleFromMessage(firstUserText)
     session.title = session.derivedTitle
   }
+  recordCommandArtifacts(session, message)
 }
 
 function textFromMessage(message: CodexMessage) {
@@ -1007,6 +1093,202 @@ function textFromMessage(message: CodexMessage) {
         .join('')
         .trim()
     : ''
+}
+
+function sanitizeArtifactSegment(value: string) {
+  return (
+    value
+      .replace(/[^a-zA-Z0-9._-]/g, '-')
+      .replace(/-+/g, '-')
+      .slice(0, 80) || 'artifact'
+  )
+}
+
+function isPathInside(parent: string, child: string) {
+  const relative = path.relative(parent, child)
+  return Boolean(relative) && !relative.startsWith('..') && !path.isAbsolute(relative)
+}
+
+function redactArtifactPath(filePath: string) {
+  const resolved = path.resolve(filePath)
+  const stateDir = path.resolve(getStateDir())
+  const workdir = path.resolve(getCodexWorkdir())
+  if (resolved === stateDir || isPathInside(stateDir, resolved)) {
+    return resolved.replace(stateDir, '$CODEX_CLAW_STATE')
+  }
+  if (resolved === workdir || isPathInside(workdir, resolved)) {
+    return resolved.replace(workdir, '$WORKSPACE')
+  }
+  const home = os.homedir()
+  if (resolved === home || isPathInside(home, resolved)) {
+    return resolved.replace(home, '~')
+  }
+  return path.basename(resolved)
+}
+
+function artifactTypeForPath(filePath: string): CodexArtifactType {
+  const normalized = filePath.toLowerCase()
+  if (normalized.endsWith('.patch') || normalized.endsWith('.diff')) {
+    return 'patch'
+  }
+  if (normalized.endsWith('.log') || normalized.endsWith('.txt')) {
+    return 'terminal-log'
+  }
+  if (
+    normalized.endsWith('.tgz') ||
+    normalized.endsWith('.zip') ||
+    normalized.endsWith('.tar.gz') ||
+    normalized.endsWith('sha256sums')
+  ) {
+    return 'package'
+  }
+  if (/\.(png|jpe?g|gif|webp)$/i.test(normalized)) return 'image'
+  if (/\.(md|json)$/i.test(normalized)) return 'export'
+  return 'file'
+}
+
+function artifactSafeToOpen(filePath: string, type: CodexArtifactType) {
+  const resolved = path.resolve(filePath)
+  const trustedRoot =
+    resolved === path.resolve(getStateDir()) ||
+    isPathInside(path.resolve(getStateDir()), resolved) ||
+    resolved === path.resolve(getCodexWorkdir()) ||
+    isPathInside(path.resolve(getCodexWorkdir()), resolved)
+  if (!trustedRoot) return false
+  return type !== 'package' && type !== 'file'
+}
+
+function artifactId(sessionKey: string, artifactPath: string, runId?: string) {
+  return [
+    sanitizeArtifactSegment(deriveFriendlyIdFromKey(sessionKey)),
+    sanitizeArtifactSegment(runId || 'manual'),
+    Buffer.from(path.resolve(artifactPath)).toString('base64url').slice(0, 24),
+  ].join('-')
+}
+
+function upsertArtifact(record: CodexArtifactRecord) {
+  const store = readArtifactStore()
+  const index = store.artifacts.findIndex((artifact) => artifact.id === record.id)
+  if (index >= 0) {
+    store.artifacts[index] = record
+  } else {
+    store.artifacts.unshift(record)
+  }
+  writeArtifactStore(store)
+}
+
+function artifactRecordFromPath(input: {
+  sessionKey: string
+  filePath: string
+  runId?: string
+  source: CodexArtifactRecord['source']
+  createdAt?: number
+}) {
+  const resolved = path.resolve(input.filePath)
+  const stats = statSync(resolved)
+  if (!stats.isFile()) return null
+  const type = artifactTypeForPath(resolved)
+  return {
+    id: artifactId(input.sessionKey, resolved, input.runId),
+    sessionKey: input.sessionKey,
+    runId: input.runId,
+    path: resolved,
+    redactedPath: redactArtifactPath(resolved),
+    type,
+    createdAt: input.createdAt ?? stats.mtimeMs,
+    safeToOpen: artifactSafeToOpen(resolved, type),
+    size: stats.size,
+    source: input.source,
+  } satisfies CodexArtifactRecord
+}
+
+function writeCommandLogArtifact(input: {
+  session: SessionRecord
+  runId?: string
+  content: string
+  createdAt: number
+}) {
+  if (!input.content.trim()) return
+  const sessionDir = path.join(
+    getArtifactsDir(),
+    sanitizeArtifactSegment(input.session.friendlyId),
+  )
+  mkdirSync(sessionDir, { recursive: true })
+  const fileName =
+    sanitizeArtifactSegment(input.runId || String(input.createdAt)) + '.log'
+  const artifactPath = path.join(sessionDir, fileName)
+  writeFileSync(artifactPath, input.content)
+  const record = artifactRecordFromPath({
+    sessionKey: input.session.key,
+    filePath: artifactPath,
+    runId: input.runId,
+    source: 'command-log',
+    createdAt: input.createdAt,
+  })
+  if (record) upsertArtifact(record)
+}
+
+function extractArtifactPathCandidates(value: string) {
+  const candidates = new Set<string>()
+  const pattern =
+    /(?:"([^"]+\.(?:patch|diff|log|txt|md|json|tgz|zip|tar\.gz|sha256sums|png|jpe?g|gif|webp))"|([A-Za-z]:\\[^\s"'<>|]+\.(?:patch|diff|log|txt|md|json|tgz|zip|tar\.gz|sha256sums|png|jpe?g|gif|webp))|((?:\.{1,2}[\\/]|[\w.-]+[\\/])?[^\s"'<>|]+\.(?:patch|diff|log|txt|md|json|tgz|zip|tar\.gz|sha256sums|png|jpe?g|gif|webp)))/gi
+  for (const match of value.matchAll(pattern)) {
+    const candidate = match[1] || match[2] || match[3]
+    if (candidate) candidates.add(candidate.replace(/[),.;:]+$/g, ''))
+  }
+  return [...candidates]
+}
+
+function resolveArtifactCandidate(candidate: string) {
+  if (path.isAbsolute(candidate)) return path.resolve(candidate)
+  return path.resolve(getCodexWorkdir(), candidate)
+}
+
+function recordDetectedFileArtifacts(input: {
+  session: SessionRecord
+  runId?: string
+  command?: string
+  output: string
+  createdAt: number
+}) {
+  const text = [input.command, input.output].filter(Boolean).join('\n')
+  for (const candidate of extractArtifactPathCandidates(text)) {
+    const resolved = resolveArtifactCandidate(candidate)
+    if (!existsSync(resolved)) continue
+    try {
+      const record = artifactRecordFromPath({
+        sessionKey: input.session.key,
+        filePath: resolved,
+        runId: input.runId,
+        source: 'detected-file',
+        createdAt: input.createdAt,
+      })
+      if (record) upsertArtifact(record)
+    } catch {
+      // Ignore candidates that are not readable local files.
+    }
+  }
+}
+
+function recordCommandArtifacts(session: SessionRecord, message: CodexMessage) {
+  if (message.role !== 'toolResult') return
+  if (message.toolName !== 'command_execution') return
+  const output = textFromMessage(message)
+  const runId = message.toolCallId || message.id
+  const createdAt =
+    typeof message.timestamp === 'number' && Number.isFinite(message.timestamp)
+      ? message.timestamp
+      : Date.now()
+  writeCommandLogArtifact({ session, runId, content: output, createdAt })
+  const command =
+    typeof message.details?.command === 'string' ? message.details.command : ''
+  recordDetectedFileArtifacts({
+    session,
+    runId,
+    command,
+    output,
+    createdAt,
+  })
 }
 
 function emit(sessionKey: string, event: CodexStreamEvent) {
@@ -2170,6 +2452,66 @@ export function listCodexTasks() {
   }
 }
 
+export function listCodexArtifacts(input: {
+  sessionKey?: string
+  friendlyId?: string
+}) {
+  const key = input.sessionKey || input.friendlyId || ''
+  const session = key ? findSession(readStore(), key) : null
+  const sessionKeys = new Set<string>()
+  if (session) {
+    sessionKeys.add(session.key)
+    sessionKeys.add(session.friendlyId)
+  } else if (key) {
+    sessionKeys.add(key)
+    sessionKeys.add(deriveFriendlyIdFromKey(key))
+  }
+  const artifacts = readArtifactStore().artifacts
+    .filter((artifact) => {
+      if (sessionKeys.size === 0) return true
+      return sessionKeys.has(artifact.sessionKey)
+    })
+    .filter((artifact) => existsSync(artifact.path))
+    .sort((first, second) => second.createdAt - first.createdAt)
+
+  return {
+    artifacts,
+    manifest: {
+      exportedAt: new Date().toISOString(),
+      sessionKey: session?.key ?? key,
+      artifactCount: artifacts.length,
+      artifacts: artifacts.map((artifact) => ({
+        id: artifact.id,
+        type: artifact.type,
+        path: artifact.redactedPath,
+        createdAt: artifact.createdAt,
+        runId: artifact.runId,
+        safeToOpen: artifact.safeToOpen,
+        size: artifact.size,
+        source: artifact.source,
+      })),
+    },
+  }
+}
+
+export function getCodexArtifactFile(input: {
+  id: string
+  sessionKey?: string
+  friendlyId?: string
+}) {
+  const payload = listCodexArtifacts({
+    sessionKey: input.sessionKey,
+    friendlyId: input.friendlyId,
+  })
+  const artifact = payload.artifacts.find((item) => item.id === input.id)
+  if (!artifact) throw new Error('Artifact not found.')
+  if (!artifact.safeToOpen) throw new Error('Artifact is not safe to open.')
+  return {
+    artifact,
+    content: readFileSync(artifact.path),
+  }
+}
+
 export function cancelCodexTask(taskId: string) {
   const id = taskId.trim()
   if (!id) throw new Error('task id required')
@@ -2295,6 +2637,7 @@ export function resetCodexServerStateForTests() {
   storeCache = null
   workspaceStoreCache = null
   taskStoreCache = null
+  artifactStoreCache = null
   runningTasks.clear()
   stateVersion = 0
 }
