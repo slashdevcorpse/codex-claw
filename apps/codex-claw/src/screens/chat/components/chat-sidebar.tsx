@@ -55,10 +55,20 @@ function ChatSidebarComponent({
     pathsLoading,
     pathsError,
     paths,
+    workspacesLoading,
+    workspacesError,
+    workspaceActionPending,
+    workspaceActionError,
+    workspaceData,
     handleOpenSettings,
     closeSettings,
     copySessionsDir,
     copyStorePath,
+    copyFixCommand,
+    createWorkspace,
+    updateWorkspace,
+    activateWorkspace,
+    deleteWorkspace,
   } = useChatSettings()
   const { deleteSession } = useDeleteSession()
   const { renameSession } = useRenameSession()
@@ -352,9 +362,19 @@ function ChatSidebarComponent({
         pathsLoading={pathsLoading}
         pathsError={pathsError}
         paths={paths}
+        workspacesLoading={workspacesLoading}
+        workspacesError={workspacesError}
+        workspaceActionPending={workspaceActionPending}
+        workspaceActionError={workspaceActionError}
+        workspaceData={workspaceData}
         onClose={closeSettings}
         onCopySessionsDir={copySessionsDir}
         onCopyStorePath={copyStorePath}
+        onCopyFixCommand={copyFixCommand}
+        onCreateWorkspace={createWorkspace}
+        onUpdateWorkspace={updateWorkspace}
+        onActivateWorkspace={activateWorkspace}
+        onDeleteWorkspace={deleteWorkspace}
       />
 
       <SessionRenameDialog
