@@ -1,14 +1,42 @@
 # CodexClaw
 
-![Cover](apps/codex-claw/public/cover.jpg)
+![CodexClaw app preview](apps/codex-claw/public/cover.jpg)
 
-CodexClaw is a local web client for OpenAI Codex and Codex CLI sessions.
+CodexClaw is a local web client for Codex CLI. It gives you a browser-based chat surface, local session history, and a small project bootstrapper while still running prompts through your own installed `codex` command.
 
-Status: public alpha, in progress. The current adapter runs local prompts through `codex exec --json`, stores lightweight session history in `.codex-claw`, and keeps the UI intentionally close to the original chat surface while the Codex-specific workflow matures.
+[![Status](https://img.shields.io/badge/status-alpha-7057ff)](#alpha-status)
+[![Runtime](https://img.shields.io/badge/runtime-Codex%20CLI-111827)](#how-it-works)
+[![License](https://img.shields.io/badge/license-MIT-0f766e)](LICENSE)
 
-## Installation
+## Alpha Status
 
-Clone and run locally:
+CodexClaw is public alpha software. The core local loop works today, but the project is intentionally marked in progress while streaming, attachments, packaging, and release checks are hardened.
+
+Use it if you want to try a local Codex CLI web surface and do not mind rough edges. Avoid relying on it as a production interface yet.
+
+## What It Does
+
+- Runs prompts through local `codex exec --json`
+- Stores local chat sessions in `.codex-claw/sessions.json`
+- Provides a React chat UI with sessions, history, rename, delete, and export controls
+- Includes a `codex-claw` CLI for project bootstrap and local environment checks
+- Keeps configuration server-side through `.env.local`
+
+## Requirements
+
+- Node.js 20 or newer
+- pnpm
+- Git
+- Codex CLI installed and logged in
+
+Check Codex CLI first:
+
+```bash
+codex --version
+codex exec "Reply with: ready"
+```
+
+## Quick Start
 
 ```bash
 git clone https://github.com/slashdevcorpse/codex-claw.git
@@ -17,53 +45,98 @@ pnpm install
 pnpm dev
 ```
 
-The app runs from `apps/codex-claw` and starts on port 3000 by default.
+Open [http://localhost:3000](http://localhost:3000).
 
-## CLI
+By default, CodexClaw runs the app at `apps/codex-claw` and starts Vite on port 3000.
 
-The alpha CLI package lives in `packages/codex-claw`. During local development:
+## Configuration
+
+CodexClaw works with no extra configuration when `codex` is available on `PATH`. Add `apps/codex-claw/.env.local` only when you need to override defaults.
+
+```bash
+CODEX_CLI_COMMAND=codex
+CODEX_CLI_SANDBOX=read-only
+CODEX_CLI_WORKDIR=C:/path/to/project
+CODEX_CLAW_STATE_DIR=C:/path/to/codex-claw-state
+```
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `CODEX_CLI_COMMAND` | `codex` | Command used by the server to launch Codex CLI |
+| `CODEX_CLI_SANDBOX` | `read-only` | Sandbox mode passed to Codex CLI |
+| `CODEX_CLI_WORKDIR` | app process cwd | Workspace directory for Codex CLI runs |
+| `CODEX_CLAW_STATE_DIR` | `.codex-claw` | Local session-history directory |
+
+## CLI Usage
+
+The local CLI package is in `packages/codex-claw`.
 
 ```bash
 pnpm -C packages/codex-claw exec codex-claw --help
 pnpm -C packages/codex-claw exec codex-claw doctor
 ```
 
-After the first npm alpha publish, the install path will be:
+After the first npm alpha publish, the intended install command is:
 
 ```bash
 npx codex-claw@alpha
 ```
 
-## Configuration
+## Common Commands
 
-CodexClaw reads these optional server-side values:
+```bash
+pnpm dev                 # start the app
+pnpm build               # build the app
+pnpm test                # run app tests
+pnpm lint                # run ESLint
+pnpm landing:dev         # start the landing page
+pnpm landing:build       # build the landing page
+```
 
-- `CODEX_CLI_COMMAND`: command used to launch Codex CLI, default `codex`.
-- `CODEX_CLI_SANDBOX`: sandbox passed to Codex CLI, default `read-only`.
-- `CODEX_CLI_WORKDIR`: workspace directory for Codex CLI runs, default app process cwd.
-- `CODEX_CLAW_STATE_DIR`: directory for local session history, default `.codex-claw` under the app process cwd.
+## How It Works
 
-Copy `.env.example` to `apps/codex-claw/.env.local` when defaults are not enough.
+The browser talks to local server routes in the app. Those routes call a local adapter in `apps/codex-claw/src/server/codex-cli.ts`, which launches Codex CLI with `codex exec --json` and writes session data to disk.
 
-## Alpha Scope
+```text
+Browser UI
+  -> app API routes
+  -> local Codex CLI adapter
+  -> codex exec --json
+  -> .codex-claw/sessions.json
+```
 
-Working now:
+This means prompts run on your machine, with your Codex CLI auth and your configured working directory.
 
-- local React chat UI
-- local session list, rename, delete, and history storage
-- `codex exec --json` prompt execution
-- CLI bootstrap and doctor checks
+## Current Limitations
 
-Known alpha limitations:
+- Responses appear after Codex CLI returns a completed assistant message; progressive streaming is not complete yet.
+- Image attachments are visible in the UI but are not passed through to Codex CLI yet.
+- The npm package is prepared as `0.1.0-alpha.0` but has not been published yet.
+- Session storage is local JSON, not a multi-user database.
+- CI and release automation are still being added.
 
-- Codex responses are appended when the CLI returns a completed assistant message; token-by-token streaming is not implemented yet.
-- Image attachments are detected by the UI but are not passed through to Codex CLI yet.
-- npm publishing is prepared but not completed.
+## Project Layout
+
+```text
+apps/codex-claw/       React app and local server routes
+apps/landing/          Public landing page
+packages/codex-claw/   CLI package
+pnpm-workspace.yaml    Workspace definition
+```
 
 ## Contributing
 
-Please read the [contributing guide](CONTRIBUTING.md).
+Small, focused changes are preferred during alpha. Good areas to work on:
+
+- Codex CLI streaming support
+- attachment pass-through
+- CLI packaging and install polish
+- tests around local session behavior
+- documentation that makes setup clearer
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a PR.
 
 ## License
 
-See [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).
+
