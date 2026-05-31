@@ -139,7 +139,9 @@ function resolveCodexCommand(command: string) {
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean)
-  const executable = matches.find((line) => /\.(cmd|exe|bat)$/i.test(line))
+  const executable =
+    matches.find((line) => /\.exe$/i.test(line)) ??
+    matches.find((line) => /\.(cmd|bat)$/i.test(line))
   if (executable) return executable
   if (matches.length > 0) return matches[0]
   return command
