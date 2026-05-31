@@ -286,6 +286,39 @@ export type CodexTaskEvent = {
   note?: string
 }
 
+export type CodexRunEventKind =
+  | 'prompt-start'
+  | 'assistant-delta'
+  | 'tool-call'
+  | 'tool-result'
+  | 'final-message'
+  | 'exit'
+  | 'error'
+  | 'status'
+
+export type CodexRunTokenMetrics = {
+  inputTokens?: number
+  outputTokens?: number
+  totalTokens?: number
+  contextTokens?: number
+  raw?: Record<string, unknown>
+}
+
+export type CodexRunTimelineEvent = {
+  id: string
+  kind: CodexRunEventKind
+  at: number
+  relativeMs: number
+  label: string
+  message?: string
+  commandName?: string
+  toolCallId?: string
+  exitCode?: number | null
+  status?: string
+  tokenMetrics?: CodexRunTokenMetrics
+  details?: Record<string, unknown>
+}
+
 export type CodexTaskRecord = {
   id: string
   sessionKey: string
@@ -302,6 +335,8 @@ export type CodexTaskRecord = {
   error?: string
   retryOf?: string
   events: Array<CodexTaskEvent>
+  timeline: Array<CodexRunTimelineEvent>
+  tokenMetrics?: CodexRunTokenMetrics
 }
 
 export type TaskListResponse = {
