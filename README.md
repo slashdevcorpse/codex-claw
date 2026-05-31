@@ -1,28 +1,63 @@
-# CodexClaw
+<p align="center">
+  <img src="apps/codex-claw/public/cover.jpg" alt="CodexClaw app preview" width="860">
+</p>
 
-![CodexClaw app preview](apps/codex-claw/public/cover.jpg)
+<h1 align="center">CodexClaw</h1>
 
-CodexClaw is a local web client for Codex CLI. It gives you a browser-based chat surface, local session history, and a small project bootstrapper while still running prompts through your own installed `codex` command.
+<p align="center">
+  A local browser workbench for Codex CLI.
+</p>
 
-[![Status](https://img.shields.io/badge/status-alpha-7057ff)](#alpha-status)
-[![Runtime](https://img.shields.io/badge/runtime-Codex%20CLI-111827)](#how-it-works)
-[![License](https://img.shields.io/badge/license-MIT-0f766e)](LICENSE)
+<p align="center">
+  <a href="#alpha-status"><img alt="Status: alpha" src="https://img.shields.io/badge/status-alpha-7057ff"></a>
+  <a href="#how-it-works"><img alt="Runtime: Codex CLI" src="https://img.shields.io/badge/runtime-Codex%20CLI-111827"></a>
+  <a href="#npm-alpha"><img alt="Package target: npx" src="https://img.shields.io/badge/package-npx%20alpha-c2410c"></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-0f766e"></a>
+</p>
+
+CodexClaw turns your installed <code>codex</code> command into a local web client with chat sessions, history, exports, and a small bootstrap CLI. Prompts still run through your own Codex CLI auth, on your machine, against the workspace you configure.
+
+## Contents
+
+- [Alpha Status](#alpha-status)
+- [Why CodexClaw](#why-codexclaw)
+- [Quick Start](#quick-start)
+- [NPM Alpha](#npm-alpha)
+- [Terminal Demo](#terminal-demo)
+- [Configuration](#configuration)
+- [Common Commands](#common-commands)
+- [How It Works](#how-it-works)
+- [Beta Track](#beta-track)
+- [Contributing](#contributing)
 
 ## Alpha Status
 
-CodexClaw is public alpha software. The core local loop works today, but the project is intentionally marked in progress while streaming, attachments, packaging, and release checks are hardened.
+CodexClaw is public alpha software. The core local loop works today, but the project is still hardening streaming, attachments, npm release automation, and beta-quality verification.
 
-Use it if you want to try a local Codex CLI web surface and do not mind rough edges. Avoid relying on it as a production interface yet.
+Use it for local experimentation with Codex CLI. Do not treat it as a production interface yet.
 
-## What It Does
+## Why CodexClaw
 
-- Runs prompts through local `codex exec --json`
-- Stores local chat sessions in `.codex-claw/sessions.json`
-- Provides a React chat UI with sessions, history, rename, delete, and export controls
-- Includes a `codex-claw` CLI for project bootstrap and local environment checks
-- Keeps configuration server-side through `.env.local`
+| Need | What CodexClaw gives you |
+| --- | --- |
+| Browser workflow | A local React chat surface for Codex CLI sessions |
+| Local control | Prompts run through <code>codex exec --json</code> with your local auth |
+| Session memory | Conversation history is stored in <code>.codex-claw/sessions.json</code> |
+| Project bootstrap | <code>codex-claw</code> can create a fresh local CodexClaw workspace |
+| Safer defaults | The app defaults Codex CLI sandboxing to <code>read-only</code> |
 
-## Requirements
+## Quick Start
+
+~~~bash
+git clone https://github.com/slashdevcorpse/codex-claw.git
+cd codex-claw
+pnpm install
+pnpm dev
+~~~
+
+Open [http://localhost:3000](http://localhost:3000).
+
+Requirements:
 
 - Node.js 20 or newer
 - pnpm
@@ -31,98 +66,114 @@ Use it if you want to try a local Codex CLI web surface and do not mind rough ed
 
 Check Codex CLI first:
 
-```bash
+~~~bash
 codex --version
 codex exec "Reply with: ready"
-```
+~~~
 
-## Quick Start
+## NPM Alpha
 
-```bash
-git clone https://github.com/slashdevcorpse/codex-claw.git
-cd codex-claw
-pnpm install
-pnpm dev
-```
+The public npm package target is <code>codex-claw@0.1.0-alpha.0</code>.
 
-Open [http://localhost:3000](http://localhost:3000).
+After the first npm alpha publish, the install path will be:
 
-By default, CodexClaw runs the app at `apps/codex-claw` and starts Vite on port 3000.
+~~~bash
+npx codex-claw@alpha
+~~~
+
+Until then, use the source checkout above. The package is intentionally tagged as alpha so early releases do not claim a stable <code>latest</code> workflow.
+
+## Terminal Demo
+
+Target first-run flow:
+
+~~~console
+$ npx codex-claw@alpha --help
+codex-claw CLI
+
+Usage:
+  codex-claw                 Create and start a new project
+  codex-claw init [dir]      Initialize a project in a directory
+  codex-claw dev             Run development server
+  codex-claw doctor          Validate local setup
+~~~
+
+Local source readiness check:
+
+~~~console
+$ node packages/codex-claw/bin/codex-claw.js doctor
+Environment looks good.
+~~~
+
+Manual source workflow:
+
+~~~console
+$ pnpm dev
+VITE v6.x ready
+Local: http://localhost:3000/
+~~~
 
 ## Configuration
 
-CodexClaw works with no extra configuration when `codex` is available on `PATH`. Add `apps/codex-claw/.env.local` only when you need to override defaults.
+CodexClaw works with no extra configuration when <code>codex</code> is available on <code>PATH</code>. Add <code>apps/codex-claw/.env.local</code> only when you need to override defaults.
 
-```bash
+~~~bash
 CODEX_CLI_COMMAND=codex
 CODEX_CLI_SANDBOX=read-only
 CODEX_CLI_WORKDIR=C:/path/to/project
 CODEX_CLAW_STATE_DIR=C:/path/to/codex-claw-state
-```
+~~~
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `CODEX_CLI_COMMAND` | `codex` | Command used by the server to launch Codex CLI |
-| `CODEX_CLI_SANDBOX` | `read-only` | Sandbox mode passed to Codex CLI |
-| `CODEX_CLI_WORKDIR` | app process cwd | Workspace directory for Codex CLI runs |
-| `CODEX_CLAW_STATE_DIR` | `.codex-claw` | Local session-history directory |
-
-## CLI Usage
-
-The local CLI package is in `packages/codex-claw`.
-
-```bash
-pnpm -C packages/codex-claw exec codex-claw --help
-pnpm -C packages/codex-claw exec codex-claw doctor
-```
-
-After the first npm alpha publish, the intended install command is:
-
-```bash
-npx codex-claw@alpha
-```
+| <code>CODEX_CLI_COMMAND</code> | <code>codex</code> | Command used by the server to launch Codex CLI |
+| <code>CODEX_CLI_SANDBOX</code> | <code>read-only</code> | Sandbox mode passed to Codex CLI |
+| <code>CODEX_CLI_WORKDIR</code> | app process cwd | Workspace directory for Codex CLI runs |
+| <code>CODEX_CLAW_STATE_DIR</code> | <code>.codex-claw</code> | Local session-history directory |
 
 ## Common Commands
 
-```bash
+~~~bash
 pnpm dev                 # start the app
 pnpm build               # build the app
 pnpm test                # run app tests
 pnpm lint                # run ESLint
 pnpm landing:dev         # start the landing page
 pnpm landing:build       # build the landing page
-```
+pnpm pack:codex-claw     # inspect npm package contents
+pnpm release:codex-claw  # publish alpha package with the alpha dist-tag
+~~~
 
 ## How It Works
 
-The browser talks to local server routes in the app. Those routes call a local adapter in `apps/codex-claw/src/server/codex-cli.ts`, which launches Codex CLI with `codex exec --json` and writes session data to disk.
-
-```text
+~~~text
 Browser UI
   -> app API routes
   -> local Codex CLI adapter
   -> codex exec --json
   -> .codex-claw/sessions.json
-```
+~~~
 
-This means prompts run on your machine, with your Codex CLI auth and your configured working directory.
+The browser talks to local server routes in <code>apps/codex-claw</code>. Those routes call <code>apps/codex-claw/src/server/codex-cli.ts</code>, which launches Codex CLI and writes session data locally.
 
-## Current Limitations
+## Beta Track
 
-- Responses appear after Codex CLI returns a completed assistant message; progressive streaming is not complete yet.
-- Image attachments are visible in the UI but are not passed through to Codex CLI yet.
-- The npm package is prepared as `0.1.0-alpha.0` but has not been published yet.
-- Session storage is local JSON, not a multi-user database.
-- CI and release automation are still being added.
+CodexClaw can move from alpha toward beta when these workflows are reliable:
+
+- Progressive Codex CLI streaming
+- Image attachment pass-through to Codex CLI
+- npm alpha publish through <code>npx codex-claw@alpha</code>
+- release checklist for package contents, smoke tests, and docs
+- CI coverage for app build, tests, lint, and package dry run
 
 ## Project Layout
 
-```text
+~~~text
 apps/codex-claw/       React app and local server routes
 apps/landing/          Public landing page
 packages/codex-claw/   CLI package
 pnpm-workspace.yaml    Workspace definition
-```
+~~~
 
 ## Contributing
 
@@ -139,4 +190,3 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a PR.
 ## License
 
 MIT. See [LICENSE](LICENSE).
-
