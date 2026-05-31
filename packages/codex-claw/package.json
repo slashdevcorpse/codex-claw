@@ -2,7 +2,7 @@
   "name": "codex-claw",
   "version": "0.1.0-alpha.0",
   "private": false,
-  "description": "CodexClaw alpha CLI",
+  "description": "Local Codex CLI web-client bootstrapper for the CodexClaw alpha.",
   "type": "module",
   "bin": {
     "codex-claw": "bin/codex-claw.js"
@@ -15,10 +15,23 @@
     "codex-claw",
     "codex",
     "codex-cli",
+    "codex-cli-ui",
+    "developer-tools",
+    "local-first",
     "cli"
   ],
   "license": "MIT",
+  "homepage": "https://github.com/slashdevcorpse/codex-claw#readme",
+  "bugs": {
+    "url": "https://github.com/slashdevcorpse/codex-claw/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/slashdevcorpse/codex-claw.git",
+    "directory": "packages/codex-claw"
+  },
   "publishConfig": {
+    "tag": "alpha",
     "access": "public"
   },
   "engines": {
