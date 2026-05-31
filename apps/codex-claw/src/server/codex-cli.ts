@@ -311,13 +311,13 @@ function buildUserPrompt(input: SendCodexPromptInput) {
   return parts.join('\n\n')
 }
 
-function buildCodexArgs(prompt: string) {
+function buildCodexArgs() {
   const args = ['-s', getCodexSandbox(), '-C', getCodexWorkdir()]
   args.push('exec')
   args.push('--ignore-user-config')
   args.push('--json')
   args.push('--skip-git-repo-check')
-  args.push(prompt)
+  args.push('-')
   return args
 }
 
@@ -357,11 +357,15 @@ function processCodexJsonLine(line: string) {
 function runCodexExec(sessionKey: string, prompt: string, runId: string) {
   const store = readStore()
   const session = ensureSession(sessionKey)
-  const command = resolveCodexCommand(getCodexCommand())
-  const args = buildCodexArgs(prompt)
+  const command =
+    process.platform === 'win32'
+      ? getCodexCommand()
+      : resolveCodexCommand(getCodexCommand())
+  const args = buildCodexArgs()
   const child = spawn(command, args, {
     cwd: getCodexWorkdir(),
     env: process.env,
+    shell: process.platform === 'win32',
   })
 
   let stdoutBuffer = ''
@@ -396,6 +400,8 @@ function runCodexExec(sessionKey: string, prompt: string, runId: string) {
   child.stderr.on('data', (chunk: string) => {
     stderrBuffer += chunk
   })
+
+  child.stdin.end(prompt)
 
   child.on('error', (error) => {
     const message = errorMessage(error.message)
@@ -575,13 +581,21 @@ export function deleteCodexSession(key: string) {
 }
 
 export function codexCliCheck() {
-  const command = resolveCodexCommand(getCodexCommand())
-  const result = spawnSync(command, ['--version'], {
-    cwd: getCodexWorkdir(),
-    env: process.env,
-    stdio: 'pipe',
-    encoding: 'utf8',
-  })
+  const result =
+    process.platform === 'win32'
+      ? spawnSync(`${getCodexCommand()} --version`, {
+          cwd: getCodexWorkdir(),
+          env: process.env,
+          stdio: 'pipe',
+          shell: true,
+          encoding: 'utf8',
+        })
+      : spawnSync(resolveCodexCommand(getCodexCommand()), ['--version'], {
+          cwd: getCodexWorkdir(),
+          env: process.env,
+          stdio: 'pipe',
+          encoding: 'utf8',
+        })
 
   if (result.status === 0) {
     return { ok: true }
