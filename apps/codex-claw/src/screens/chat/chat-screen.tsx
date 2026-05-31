@@ -259,6 +259,7 @@ export function ChatScreen({
     const attachmentsPayload = attachments?.map((a) => ({
       mimeType: a.file.type,
       content: a.base64,
+      name: a.file.name,
     }))
 
     fetch('/api/send', {
