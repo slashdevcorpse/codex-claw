@@ -126,6 +126,9 @@ export const Route = createFileRoute('/api/send')({
           const message = String(body.message ?? '')
           const thinking =
             typeof body.thinking === 'string' ? body.thinking : undefined
+          const runProfile =
+            typeof body.runProfile === 'string' ? body.runProfile : undefined
+          const confirmedRisk = body.confirmedRisk === true
 
           const parsedAttachments = parseAttachments(body.attachments)
           if (!parsedAttachments.ok) {
@@ -179,6 +182,8 @@ export const Route = createFileRoute('/api/send')({
             thinking,
             attachments,
             contextBlock,
+            runProfile,
+            confirmedRisk,
             idempotencyKey:
               typeof body.idempotencyKey === 'string'
                 ? body.idempotencyKey

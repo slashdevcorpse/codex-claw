@@ -102,10 +102,25 @@ export type WorkspaceSummary = {
   name: string
   codexCommand: string
   codexSandbox: string
+  codexApproval: string
+  runProfile: RunProfileId
   codexWorkdir: string
   stateDir: string
   createdAt: number
   updatedAt: number
+}
+
+export type RunProfileId =
+  | 'read-only-inspect'
+  | 'workspace-write'
+  | 'elevated-manual-review'
+
+export type RunProfileSummary = {
+  id: RunProfileId
+  label: string
+  sandbox: string
+  approval: string
+  requiresConfirmation: boolean
 }
 
 export type WorkspaceHealthStatus = 'ok' | 'warning' | 'error'

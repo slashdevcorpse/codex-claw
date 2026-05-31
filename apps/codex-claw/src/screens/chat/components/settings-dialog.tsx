@@ -38,6 +38,8 @@ type WorkspaceDraft = Partial<
     | 'name'
     | 'codexCommand'
     | 'codexSandbox'
+    | 'codexApproval'
+    | 'runProfile'
     | 'codexWorkdir'
     | 'stateDir'
   >
@@ -97,6 +99,27 @@ function WorkspaceField({ label, children }: WorkspaceFieldProps) {
 
 const newWorkspaceId = '__new__'
 const sandboxOptions = ['read-only', 'workspace-write', 'danger-full-access']
+const approvalOptions = ['untrusted', 'on-request', 'never']
+const runProfileOptions = [
+  {
+    id: 'read-only-inspect',
+    label: 'Read-only inspect',
+    sandbox: 'read-only',
+    approval: 'untrusted',
+  },
+  {
+    id: 'workspace-write',
+    label: 'Workspace write',
+    sandbox: 'workspace-write',
+    approval: 'on-request',
+  },
+  {
+    id: 'elevated-manual-review',
+    label: 'Elevated manual review',
+    sandbox: 'danger-full-access',
+    approval: 'untrusted',
+  },
+] as const
 
 function emptyWorkspaceDraft(
   workspace?: WorkspaceSummary | null,
@@ -105,6 +128,8 @@ function emptyWorkspaceDraft(
     name: workspace ? `${workspace.name} copy` : 'New workspace',
     codexCommand: workspace?.codexCommand ?? 'codex',
     codexSandbox: workspace?.codexSandbox ?? 'read-only',
+    codexApproval: workspace?.codexApproval ?? 'untrusted',
+    runProfile: workspace?.runProfile ?? 'read-only-inspect',
     codexWorkdir: workspace?.codexWorkdir ?? '',
     stateDir: workspace?.stateDir ?? '',
   }
@@ -210,6 +235,8 @@ export function SettingsDialog({
       name: selectedWorkspace.name,
       codexCommand: selectedWorkspace.codexCommand,
       codexSandbox: selectedWorkspace.codexSandbox,
+      codexApproval: selectedWorkspace.codexApproval,
+      runProfile: selectedWorkspace.runProfile,
       codexWorkdir: selectedWorkspace.codexWorkdir,
       stateDir: selectedWorkspace.stateDir,
     })
@@ -217,6 +244,16 @@ export function SettingsDialog({
 
   function updateDraft(field: keyof WorkspaceDraft, value: string) {
     setDraft((current) => ({ ...current, [field]: value }))
+  }
+
+  function updateRunProfile(value: string) {
+    const profile = runProfileOptions.find((option) => option.id === value)
+    setDraft((current) => ({
+      ...current,
+      runProfile: value as WorkspaceDraft['runProfile'],
+      codexSandbox: profile?.sandbox ?? current.codexSandbox,
+      codexApproval: profile?.approval ?? current.codexApproval,
+    }))
   }
 
   function handleNewWorkspace() {
@@ -370,6 +407,34 @@ export function SettingsDialog({
                   className="h-8.5 w-full rounded-lg border border-primary-200 bg-surface px-3 text-sm text-primary-900 outline-none focus-visible:ring-2 focus-visible:ring-primary-950"
                 >
                   {sandboxOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </WorkspaceField>
+              <WorkspaceField label="Run profile">
+                <select
+                  value={draft.runProfile ?? 'read-only-inspect'}
+                  onChange={(event) => updateRunProfile(event.target.value)}
+                  className="h-8.5 w-full rounded-lg border border-primary-200 bg-surface px-3 text-sm text-primary-900 outline-none focus-visible:ring-2 focus-visible:ring-primary-950"
+                >
+                  {runProfileOptions.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </WorkspaceField>
+              <WorkspaceField label="Approval">
+                <select
+                  value={draft.codexApproval ?? 'untrusted'}
+                  onChange={(event) =>
+                    updateDraft('codexApproval', event.target.value)
+                  }
+                  className="h-8.5 w-full rounded-lg border border-primary-200 bg-surface px-3 text-sm text-primary-900 outline-none focus-visible:ring-2 focus-visible:ring-primary-950"
+                >
+                  {approvalOptions.map((option) => (
                     <option key={option} value={option}>
                       {option}
                     </option>
