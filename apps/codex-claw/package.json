@@ -35,7 +35,7 @@
     "streamdown": "^2.2.0",
     "tailwind-merge": "^3.4.0",
     "tailwindcss": "^4.3.0",
-    "use-stick-to-bottom": "^1.1.2",
+    "use-stick-to-bottom": "^1.1.4",
     "vite-tsconfig-paths": "^6.0.2",
     "ws": "^8.21.0",
     "zustand": "^5.0.11"
