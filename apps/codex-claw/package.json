@@ -30,7 +30,7 @@
     "motion": "^12.29.2",
     "nitro": "npm:nitro-nightly@3.0.1-20260529-064703-255b254f",
     "react": "^19.2.0",
-    "react-dom": "^19.2.0",
+    "react-dom": "^19.2.7",
     "shiki": "^3.21.0",
     "streamdown": "^2.2.0",
     "tailwind-merge": "^3.4.0",
